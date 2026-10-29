@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a0d14">
+<title>Lanzador de tweets · VOID</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0a0d14;--panel:#121722;--panel2:#181f2d;--line:#252e40;--line2:#323d54;
+  --text:#e8edf6;--muted:#8a96ab;--faint:#5d6880;
+  --auto:#5ad1b3;--auto-bg:#0f2a26;--manual:#f5b84f;--manual-bg:#2c2312;
+  --ok:#62d68f;--err:#ff6b7f;--err-bg:#2d1419;--blue:#7aa2ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.5;cursor:default}
+a{color:var(--blue)}
+.hidden{display:none!important}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:24px}
+.login form{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;display:grid;gap:14px}
+.login h1{margin:0;font-size:22px}
+
+/* Layout */
+header{position:sticky;top:0;z-index:20;background:rgba(10,13,20,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.head{max-width:1500px;margin:auto;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#5ad1b3,#7aa2ff);display:grid;place-items:center;color:#06121a;font-weight:900}
+.brand b{display:block;font-size:16px;letter-spacing:.02em}
+.brand small{color:var(--muted);font-size:12px}
+main{max-width:1500px;margin:auto;padding:16px 16px 80px}
+
+/* Autopilot switch */
+.pilot{display:flex;align-items:center;gap:12px;border:1px solid var(--line2);border-radius:14px;padding:8px 10px 8px 14px;background:var(--panel)}
+.pilot .label{font-size:12px;color:var(--muted);line-height:1.2}
+.pilot .label b{display:block;font-size:14px;color:var(--text)}
+.switch{width:58px;height:32px;border-radius:99px;border:0;background:#3a4357;position:relative;transition:.2s;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on{background:var(--ok)}
+.switch.on::after{left:29px}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.stat span{display:block;color:var(--muted);font-size:12px}
+.stat b{display:block;font-size:20px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat small{color:var(--muted);font-size:12px}
+
+/* Alerts */
+.alert{border-radius:12px;padding:12px 14px;margin-bottom:10px;border:1px solid;display:flex;gap:10px;align-items:flex-start}
+.alert.err{background:var(--err-bg);border-color:#5a2530;color:#ffc2cb}
+.alert.warn{background:var(--manual-bg);border-color:#5a4520;color:#ffe0a8}
+.alert .x{margin-left:auto;background:none;border:0;color:inherit;opacity:.7;font-size:18px;line-height:1}
+
+/* Toolbar + tabs */
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto;scrollbar-width:none;margin-right:auto;max-width:100%}
+.tabs button{background:none;border:0;border-radius:9px;padding:8px 12px;color:var(--muted);white-space:nowrap;font-weight:600}
+.tabs button.active{background:var(--panel2);color:var(--text)}
+.tabs .n{display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;border-radius:99px;background:var(--line);font-size:12px;color:var(--text)}
+.tabs .n.red{background:var(--err);color:#200}
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:10px;padding:9px 14px;font-weight:600;white-space:nowrap}
+.btn:hover{border-color:#46526d}
+.btn.primary{background:var(--auto);border-color:var(--auto);color:#04140f}
+.btn.amber{background:var(--manual);border-color:var(--manual);color:#1d1404}
+.btn.danger{color:#ff9aa8;border-color:#5a2530;background:transparent}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+
+/* Board */
+.board{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:16px;min-width:0}
+.col-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.col-head h2{margin:0;font-size:16px}
+.col-head p{margin:0;color:var(--muted);font-size:12px}
+.col-head .count{margin-left:auto;font-size:22px;font-weight:800}
+.col.auto .col-head{border-top:3px solid var(--auto);border-radius:16px 16px 0 0}
+.col.manual .col-head{border-top:3px solid var(--manual);border-radius:16px 16px 0 0}
+.list{padding:10px;display:grid;gap:10px}
+.empty{color:var(--muted);text-align:center;padding:30px 16px;font-size:14px}
+
+/* Tweet card */
+.tw{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.tw.err{border-color:#5a2530}
+.tw-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)}
+.badge{font-weight:800;font-size:11px;letter-spacing:.05em;padding:3px 8px;border-radius:6px;text-transform:uppercase}
+.badge.auto{background:var(--auto-bg);color:var(--auto)}
+.badge.manual{background:var(--manual-bg);color:var(--manual)}
+.badge.ok{background:#11291b;color:var(--ok)}
+.badge.err{background:var(--err-bg);color:var(--err)}
+.badge.send{background:#16223d;color:var(--blue)}
+.when{color:var(--text);font-weight:600}
+.when.late{color:var(--manual)}
+.chars{margin-left:auto}
+.chars.over{color:var(--err);font-weight:700}
+.tw-text{white-space:pre-wrap;word-wrap:break-word;font-size:16px;line-height:1.45}
+.tw-text a{color:var(--blue);text-decoration:none;word-break:break-all}
+.tw-src{margin-top:8px;font-size:12px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tw-src a{color:var(--muted)}
+.tw-error{margin-top:8px;background:var(--err-bg);color:#ffc2cb;border-radius:8px;padding:8px 10px;font-size:13px}
+.tw-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tw textarea{width:100%;min-height:120px;resize:vertical;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:10px;font-size:16px;line-height:1.45}
+.inline{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+
+/* Forms */
+input,select,textarea{background:var(--bg);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;min-width:0}
+input:focus,select:focus,textarea:focus{outline:2px solid #2f6f60;border-color:var(--auto)}
+.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
+.card h3{margin:0 0 4px;font-size:16px}
+.card > p{margin:0 0 14px;color:var(--muted);font-size:13px}
+.field{display:grid;gap:4px;margin-bottom:12px}
+.field label{font-weight:600;font-size:14px}
+.field small{color:var(--muted);font-size:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row input{width:90px}
+.seg{justify-self:start;display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:8px 14px;font-weight:600;color:var(--muted)}
+.seg button.on.auto{background:var(--auto);color:#04140f}
+.seg button.on.manual{background:var(--manual);color:#1d1404}
+
+/* Log */
+.log{display:grid;gap:2px}
+.log div{display:flex;gap:10px;padding:8px 10px;border-radius:8px;font-size:14px}
+.log div:nth-child(odd){background:var(--panel)}
+.log time{color:var(--muted);white-space:nowrap;font-size:12px;padding-top:2px;min-width:92px}
+.log .error{color:#ffb3bf}.log .ok{color:#a9ecc3}.log .warn{color:#ffe0a8}
+
+/* Dialog */
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:18px;padding:20px;width:min(520px,calc(100vw - 32px))}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h3{margin:0 0 12px}
+dialog textarea{width:100%;min-height:140px;font-size:16px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap}
+
+/* Toast */
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;display:grid;gap:8px;width:min(520px,calc(100vw - 32px))}
+.toast{background:#1d2535;border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:14px}
+.toast.err{background:var(--err-bg);border-color:#5a2530;color:#ffc2cb}
+.toast.ok{border-color:#245a3a}
+
+@media (max-width:900px){
+  .board,.settings{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr}
+}
+@media (max-width:520px){
+  .head{padding:10px 12px}
+  main{padding:12px 12px 80px}
+  .pilot{width:100%;justify-content:space-between}
+  .stat b{font-size:17px}
+}
+</style>
+</head>
+<body>
+
+<section id="login" class="login hidden">
+  <form id="loginForm">
+    <div class="logo" style="width:44px;height:44px">V</div>
+    <h1>Lanzador de tweets</h1>
+    <p style="margin:0;color:var(--muted)">Escribe tu contraseña (el secreto <b>ADMIN_TOKEN</b> de Cloudflare).</p>
+    <input id="tokenInput" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+    <button class="btn primary" type="submit">Entrar</button>
+    <p id="loginError" style="margin:0;color:var(--err)"></p>
+  </form>
+</section>
+
+<section id="app" class="hidden">
+  <header>
+    <div class="head">
+      <div class="brand">
+        <div class="logo">V</div>
+        <div><b>Lanzador de tweets</b><small id="account">Noticiero VOID</small></div>
+      </div>
+      <div class="pilot">
+        <div class="label">Piloto automático<b id="pilotText">—</b></div>
+        <button id="pilotSwitch" class="switch" aria-label="Encender o apagar el piloto automático"></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="alerts"></div>
+
+    <div class="stats">
+      <div class="stat"><span>Próximo tweet automático</span><b id="sNext">—</b><small id="sNextRel"></small></div>
+      <div class="stat"><span>Publicados hoy</span><b id="sToday">—</b><small id="sTodayMax"></small></div>
+      <div class="stat"><span>Gasto este mes</span><b id="sSpent">—</b><small id="sBudget"></small></div>
+      <div class="stat"><span>Próxima tanda de la IA</span><b id="sGen">—</b><small id="sGenRel"></small></div>
+    </div>
+
+    <div class="bar">
+      <nav class="tabs" id="tabs">
+        <button data-tab="queue" class="active">Cola <span class="n" id="nQueue">0</span></button>
+        <button data-tab="published">Publicados <span class="n" id="nPub">0</span></button>
+        <button data-tab="errors">Errores <span class="n" id="nErr">0</span></button>
+        <button data-tab="log">Actividad</button>
+        <button data-tab="settings">Ajustes</button>
+      </nav>
+      <button class="btn primary" id="btnGenerate">✨ Generar tweets</button>
+      <button class="btn" id="btnCompose">✍️ Escribir tweet</button>
+    </div>
+
+    <section data-view="queue">
+      <div class="board">
+        <div class="col auto">
+          <div class="col-head">
+            <div><h2>🤖 Automáticos</h2><p>Salen solos a la hora indicada (con el piloto encendido)</p></div>
+            <div class="count" id="cAuto">0</div>
+          </div>
+          <div class="list" id="listAuto"></div>
+        </div>
+        <div class="col manual">
+          <div class="col-head">
+            <div><h2>✋ Manuales</h2><p>No salen hasta que pulses «Publicar ahora»</p></div>
+            <div class="count" id="cManual">0</div>
+          </div>
+          <div class="list" id="listManual"></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-view="published" class="hidden"><div class="list" id="listPublished" style="padding:0"></div></section>
+    <section data-view="errors" class="hidden"><div class="list" id="listErrors" style="padding:0"></div></section>
+    <section data-view="log" class="hidden"><div class="card"><div class="log" id="logList"></div></div></section>
+
+    <section data-view="settings" class="hidden">
+      <form id="settingsForm" class="settings">
+        <div class="card">
+          <h3>🤖 Qué hace la IA</h3>
+          <p>Cada cierto tiempo lee el RSS y redacta tweets nuevos (solo con el piloto encendido).</p>
+          <div class="field">
+            <label>Los tweets nuevos de la IA van a…</label>
+            <div class="seg" id="modeSeg">
+              <button type="button" data-mode="auto" class="auto">Automáticos</button>
+              <button type="button" data-mode="manual" class="manual">Manuales</button>
+            </div>
+            <small>Automáticos: se programan y salen solos. Manuales: esperan a que los revises.</small>
+          </div>
+          <div class="field"><label>Generar una tanda cada</label><div class="row"><input name="generateEveryHours" type="number" min="1" max="24"> horas</div></div>
+          <div class="field"><label>Tweets por tanda</label><div class="row"><input name="tweetsPerBatch" type="number" min="1" max="8"> tweets, de los cuales <input name="linksPerBatch" type="number" min="0" max="8"> llevan enlace</div><small>Con enlace a la noticia cuesta bastante más en X.</small></div>
+        </div>
+
+        <div class="card">
+          <h3>🕒 Cuándo se publica</h3>
+          <p>Los automáticos se reparten solos en huecos que cumplan estas reglas.</p>
+          <div class="field"><label>Horario de publicación</label><div class="row">de <input name="windowStart" type="number" min="0" max="23"> h a <input name="windowEnd" type="number" min="0" max="24"> h</div></div>
+          <div class="field"><label>Separación mínima entre tweets</label><div class="row"><input name="minMinutesBetween" type="number" min="0" max="600"> minutos</div></div>
+          <div class="field"><label>Máximo al día</label><div class="row"><input name="maxPerDay" type="number" min="1" max="100"> tweets</div></div>
+        </div>
+
+        <div class="card">
+          <h3>💶 Dinero</h3>
+          <p>Si un tweet haría pasar el presupuesto, no se publica.</p>
+          <div class="field"><label>Presupuesto mensual</label><div class="row"><input name="monthlyBudgetEur" type="number" min="0" step="0.5"> €</div></div>
+          <div class="field"><label>Coste por tweet</label><div class="row"><input name="costPerTweetEur" type="number" min="0" step="0.001"> € normal · <input name="costPerLinkTweetEur" type="number" min="0" step="0.001"> € con enlace</div></div>
+        </div>
+
+        <div class="card">
+          <h3>📰 Fuente y pruebas</h3>
+          <p>De dónde salen las noticias y comprobar que todo conecta.</p>
+          <div class="field"><label>RSS</label><input name="rssUrl" type="url"></div>
+          <div class="field"><label>Noticias de como mucho</label><div class="row"><input name="maxArticleAgeHours" type="number" min="1" max="720"> horas de antigüedad</div></div>
+          <div class="field"><label>Modelo de IA</label><input name="model"><small>Por defecto @cf/zai-org/glm-4.7-flash</small></div>
+          <div class="row">
+            <button type="button" class="btn" id="btnTestX">Probar conexión con X</button>
+            <button type="button" class="btn" id="btnTestAI">Probar IA</button>
+          </div>
+        </div>
+
+        <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn primary" type="submit">Guardar ajustes</button>
+        </div>
+      </form>
+      <p style="color:var(--muted);font-size:12px;margin-top:16px">Al guardar se recalculan los horarios de los automáticos. <button class="btn sm ghost" id="btnLogout" type="button">Cerrar sesión</button></p>
+    </section>
+  </main>
+</section>
+
+<dialog id="dlgGenerate">
+  <form method="dialog" id="genForm">
+    <h3>✨ Generar tweets con la IA</h3>
+    <p style="color:var(--muted);margin-top:0">Lee las noticias nuevas del RSS y redacta un tweet por noticia.</p>
+    <div class="field"><label>¿Cuántos?</label><div class="row"><input id="genCount" type="number" min="1" max="8" value="4"> tweets</div></div>
+    <div class="field">
+      <label>Que vayan a…</label>
+      <div class="seg" id="genSeg">
+        <button type="button" data-mode="auto" class="auto on">Automáticos</button>
+        <button type="button" data-mode="manual" class="manual">Manuales</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn ghost" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn primary" id="genGo" value="go">Generar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgCompose">
+  <form method="dialog" id="composeForm">
+    <h3>✍️ Escribir un tweet</h3>
+    <textarea id="composeText" placeholder="¿Qué quieres publicar?"></textarea>
+    <div class="row" style="justify-content:space-between;margin-top:6px"><small id="composeCount" style="color:var(--muted)">0 / 280</small></div>
+    <div class="field" style="margin-top:10px">
+      <label>Que vaya a…</label>
+      <div class="seg" id="composeSeg">
+        <button type="button" data-mode="manual" class="manual on">Manuales</button>
+        <button type="button" data-mode="auto" class="auto">Automáticos</button>
+      </div>
+    </div>
+    <div class="field hidden" id="composeWhenWrap"><label>Hora (opcional)</label><input id="composeWhen" type="datetime-local"><small>Vacío = el siguiente hueco libre.</small></div>
+    <div class="dialog-actions">
+      <button class="btn ghost" value="cancel" formnovalidate>Cancelar</button>
+      <button class="btn primary" value="go">Añadir</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+let TOKEN = "";
+try { TOKEN = localStorage.getItem("void_token") || ""; } catch {}
+let STATE = null;
+let TAB = "queue";
+const editing = new Set();      // ids en modo edición (no se repintan al refrescar)
+const dismissed = new Set();
+
+// ---------- API ----------
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: "Respuesta no válida del servidor." }));
+  if (res.status === 401) { showLogin("Contraseña incorrecta."); throw new Error(data.error); }
+  if (!data.ok) throw new Error(data.error || "Error desconocido.");
+  return data;
+}
+
+async function act(button, fn, okMsg) {
+  const old = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "…"; }
+  try {
+    const r = await fn();
+    if (okMsg) toast(typeof okMsg === "function" ? okMsg(r) : okMsg, "ok");
+    await refresh();
+    return r;
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = old; }
+  }
+}
+
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.textContent = msg;
+  $("#toast").appendChild(el);
+  setTimeout(() => el.remove(), kind === "err" ? 9000 : 4000);
+}
+
+// ---------- Login ----------
+function showLogin(msg = "") {
+  $("#app").classList.add("hidden");
+  $("#login").classList.remove("hidden");
+  $("#loginError").textContent = msg;
+  $("#tokenInput").focus();
+}
+
+$("#loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  TOKEN = $("#tokenInput").value.trim();
+  try { localStorage.setItem("void_token", TOKEN); } catch {}
+  $("#loginError").textContent = "";
+  await start();
+});
+
+$("#btnLogout").addEventListener("click", () => {
+  try { localStorage.removeItem("void_token"); } catch {}
+  TOKEN = "";
+  showLogin();
+});
+
+async function start() {
+  if (!TOKEN) return showLogin();
+  try {
+    await refresh();
+    $("#login").classList.add("hidden");
+    $("#app").classList.remove("hidden");
+    fillSettings();
+  } catch (e) {
+    if (!$("#app").classList.contains("hidden")) return;
+    showLogin(e.message);
+  }
+}
+
+// ---------- Formatos ----------
+const tz = () => STATE?.config?.timezone || "Europe/Madrid";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+const xLen = s => [...String(s).replace(/https?:\/\/\S+/g, "x".repeat(23))].length;
+const eur = n => Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+
+function dayLabel(d) {
+  const fmt = x => new Intl.DateTimeFormat("en-CA", { timeZone: tz() }).format(x);
+  const today = fmt(new Date()), tomorrow = fmt(new Date(Date.now() + 86400000)), yesterday = fmt(new Date(Date.now() - 86400000));
+  const day = fmt(d);
+  if (day === today) return "hoy";
+  if (day === tomorrow) return "mañana";
+  if (day === yesterday) return "ayer";
+  return new Intl.DateTimeFormat("es-ES", { timeZone: tz(), weekday: "short", day: "numeric", month: "short" }).format(d);
+}
+function when(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return dayLabel(d) + " " + new Intl.DateTimeFormat("es-ES", { timeZone: tz(), hour: "2-digit", minute: "2-digit" }).format(d);
+}
+function rel(iso) {
+  if (!iso) return "";
+  const m = Math.round((Date.parse(iso) - Date.now()) / 60000);
+  const abs = Math.abs(m);
+  const txt = abs < 1 ? "ahora" : abs < 60 ? abs + " min" : abs < 1440 ? Math.floor(abs / 60) + " h " + (abs % 60 ? (abs % 60) + " min" : "") : Math.round(abs / 1440) + " días";
+  if (abs < 1) return "ahora mismo";
+  return m > 0 ? "en " + txt.trim() : "hace " + txt.trim();
+}
+function localInputValue(iso) {
+  const d = iso ? new Date(iso) : new Date(Date.now() + 3600000);
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ---------- Pintar ----------
+async function refresh() {
+  STATE = await api("/api/state");
+  render();
+}
+
+function render() {
+  const s = STATE, c = s.config;
+
+  $("#account").textContent = c.xUsername ? "@" + c.xUsername + " · Noticiero VOID" : "Noticiero VOID · X sin comprobar";
+  $("#pilotSwitch").classList.toggle("on", c.autopilot);
+  $("#pilotText").textContent = c.autopilot ? "ENCENDIDO" : "APAGADO";
+  $("#pilotText").style.color = c.autopilot ? "var(--ok)" : "var(--err)";
+
+  const next = s.stats.nextAutoAt;
+  $("#sNext").textContent = next ? when(next) : "Ninguno en cola";
+  $("#sNextRel").textContent = next ? (c.autopilot ? rel(next) : "no saldrá: piloto apagado") : "";
+  $("#sToday").textContent = s.stats.publishedToday;
+  $("#sTodayMax").textContent = "máximo " + c.maxPerDay + " automáticos/día";
+  $("#sSpent").textContent = eur(s.stats.spentMonth);
+  $("#sBudget").textContent = "de " + eur(c.monthlyBudgetEur) + " de presupuesto";
+  if (!c.autopilot) { $("#sGen").textContent = "En pausa"; $("#sGenRel").textContent = "enciende el piloto"; }
+  else if (!s.stats.nextGenerationAt || Date.parse(s.stats.nextGenerationAt) <= Date.now()) { $("#sGen").textContent = "En el próximo minuto"; $("#sGenRel").textContent = ""; }
+  else { $("#sGen").textContent = when(s.stats.nextGenerationAt); $("#sGenRel").textContent = rel(s.stats.nextGenerationAt) + " · " + c.tweetsPerBatch + " tweets"; }
+
+  renderAlerts();
+
+  $("#nQueue").textContent = s.auto.length + s.manual.length;
+  $("#nPub").textContent = s.published.length;
+  $("#nErr").textContent = s.errors.length;
+  $("#nErr").classList.toggle("red", s.errors.length > 0);
+  $("#cAuto").textContent = s.auto.length;
+  $("#cManual").textContent = s.manual.length;
+
+  paintList("#listAuto", s.auto, "Sin tweets automáticos. Pulsa «✨ Generar tweets» o pasa alguno desde Manuales.");
+  paintList("#listManual", s.manual, "Sin tweets manuales pendientes.");
+  paintList("#listPublished", s.published, "Todavía no se ha publicado nada.");
+  paintList("#listErrors", s.errors, "Sin errores. 👌");
+
+  $("#logList").innerHTML = s.log.length ? s.log.map(l =>
+    `<div><time>${esc(when(l.created_at))}</time><span class="${esc(l.level)}">${esc(l.message)}</span></div>`
+  ).join("") : '<p class="empty">Sin actividad todavía.</p>';
+}
+
+function renderAlerts() {
+  const s = STATE, out = [];
+  if (s.secrets.x.length) out.push(["err", "secrets", "Faltan secretos de X en Cloudflare: " + s.secrets.x.join(", ")]);
+  if (!s.secrets.ai) out.push(["err", "ai", "Falta el binding de Workers AI (AI)."]);
+  if (!s.config.autopilot && s.auto.length) out.push(["warn", "pilot", `Tienes ${s.auto.length} tweets automáticos pero el piloto está APAGADO: no saldrá ninguno hasta que lo enciendas (arriba a la derecha).`]);
+  const lastErr = s.log.find(l => l.level === "error" && Date.now() - Date.parse(l.created_at) < 6 * 3600000);
+  if (lastErr) out.push(["err", "e" + lastErr.id, "Último error (" + rel(lastErr.created_at) + "): " + lastErr.message]);
+  $("#alerts").innerHTML = out.filter(a => !dismissed.has(a[1])).map(([k, id, m]) =>
+    `<div class="alert ${k}"><span>${esc(m)}</span><button class="x" data-dismiss="${esc(id)}" aria-label="Cerrar">×</button></div>`
+  ).join("");
+}
+
+function paintList(sel, items, emptyText) {
+  const el = $(sel);
+  if (!items.length) { el.innerHTML = `<p class="empty">${esc(emptyText)}</p>`; return; }
+  // Si hay un tweet en edición en esta lista, solo actualizamos los demás.
+  if ([...editing].some(id => el.querySelector(`[data-id="${id}"]`))) return;
+  el.innerHTML = items.map(card).join("");
+}
+
+function card(t) {
+  const n = xLen(t.text);
+  let badge = "", whenTxt = "";
+  if (t.status === "sending") badge = '<span class="badge send">Enviando…</span>';
+  else if (t.status === "published") { badge = '<span class="badge ok">Publicado</span>'; whenTxt = `<span class="when">${esc(when(t.published_at))}</span>`; }
+  else if (t.status === "error") badge = `<span class="badge err">Error</span><span class="badge ${t.mode}">${t.mode === "auto" ? "Auto" : "Manual"}</span>`;
+  else if (t.mode === "auto") {
+    badge = '<span class="badge auto">Auto</span>';
+    const late = t.scheduled_at && Date.parse(t.scheduled_at) < Date.now();
+    whenTxt = t.scheduled_at ? `<span class="when ${late ? "late" : ""}">🕒 ${esc(when(t.scheduled_at))}</span><span>${esc(late ? (STATE.config.autopilot ? "sale en breve" : "atrasado · piloto apagado") : rel(t.scheduled_at))}</span>` : "<span>sin hora</span>";
+  } else badge = '<span class="badge manual">Manual</span><span>espera tu OK</span>';
+
+  const link = t.has_link ? "<span>🔗 con enlace</span>" : "";
+  const src = t.article_url
+    ? `<div class="tw-src">Noticia: <a href="${esc(t.article_url)}" target="_blank" rel="noopener">${esc(t.article_title || t.article_url)}</a></div>`
+    : `<div class="tw-src">${esc(t.article_title || "")}</div>`;
+
+  const B = (a, label, cls = "") => `<button class="btn sm ${cls}" data-act="${a}" data-id="${t.id}">${label}</button>`;
+  let actions = [];
+  if (t.status === "pending" || t.status === "error") {
+    actions.push(B("publish", "🚀 Publicar ahora", "primary"));
+    actions.push(B("edit", "✏️ Editar"));
+    if (t.mode === "auto") { actions.push(B("toManual", "✋ Pasar a manual")); actions.push(B("time", "🕒 Cambiar hora")); }
+    else { actions.push(B("toAuto", "🤖 Pasar a automático")); actions.push(B("time", "🕒 Programar a una hora")); }
+    if (t.status === "error") actions.push(B("retry", "↻ Volver a la cola"));
+    actions.push(B("delete", "🗑", "danger"));
+  } else if (t.status === "published") {
+    if (t.x_post_id) actions.push(`<a class="btn sm" href="https://x.com/i/web/status/${esc(t.x_post_id)}" target="_blank" rel="noopener">Ver en X ↗</a>`);
+  }
+
+  return `<article class="tw ${t.status === "error" ? "err" : ""}" data-id="${t.id}">
+    <div class="tw-top">${badge}${whenTxt}${link}<span class="chars ${n > 280 ? "over" : ""}">${n}/280</span></div>
+    <div class="tw-text">${linkify(t.text)}</div>
+    ${src}
+    ${t.error ? `<div class="tw-error">${esc(t.error)}</div>` : ""}
+    <div class="tw-actions">${actions.join("")}</div>
+    <div class="slot"></div>
+  </article>`;
+}
+
+// ---------- Acciones de los tweets ----------
+document.addEventListener("click", async e => {
+  const dismiss = e.target.closest("[data-dismiss]");
+  if (dismiss) { dismissed.add(dismiss.dataset.dismiss); renderAlerts(); return; }
+
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const art = btn.closest(".tw");
+  const all = [...STATE.auto, ...STATE.manual, ...STATE.errors, ...STATE.published];
+  const t = all.find(x => x.id === id);
+  const a = btn.dataset.act;
+
+  if (a === "publish") {
+    if (!confirm("¿Publicar este tweet en X ahora mismo?\n\n" + t.text)) return;
+    return act(btn, () => api(`/api/tweets/${id}/publish`, {}), "Publicado en X ✅");
+  }
+  if (a === "toManual") return act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "manual" }), "Pasado a manual");
+  if (a === "toAuto") return act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "auto" }), "Pasado a automático");
+  if (a === "retry") return act(btn, () => api(`/api/tweets/${id}/retry`, {}), "Vuelve a estar en la cola");
+  if (a === "delete") {
+    if (!confirm("¿Borrar este tweet?")) return;
+    return act(btn, () => api(`/api/tweets/${id}/delete`, {}), "Borrado");
+  }
+
+  if (a === "edit") {
+    editing.add(id);
+    art.querySelector(".tw-text").classList.add("hidden");
+    art.querySelector(".tw-actions").classList.add("hidden");
+    art.querySelector(".slot").innerHTML = `<textarea>${esc(t.text)}</textarea>
+      <div class="inline"><small class="cnt" style="color:var(--muted)"></small><span style="flex:1"></span>
+      <button class="btn sm ghost" data-act="cancel" data-id="${id}">Cancelar</button>
+      <button class="btn sm primary" data-act="save" data-id="${id}">Guardar</button></div>`;
+    const ta = art.querySelector("textarea");
+    const upd = () => { const n = xLen(ta.value); const c = art.querySelector(".cnt"); c.textContent = n + " / 280"; c.style.color = n > 280 ? "var(--err)" : "var(--muted)"; };
+    ta.addEventListener("input", upd); upd(); ta.focus();
+    return;
+  }
+  if (a === "cancel") { editing.delete(id); return render(); }
+  if (a === "save") {
+    const text = art.querySelector("textarea").value;
+    const r = await act(btn, () => api(`/api/tweets/${id}/edit`, { text }), "Guardado");
+    if (r) { editing.delete(id); render(); }
+    return;
+  }
+
+  if (a === "time") {
+    editing.add(id);
+    art.querySelector(".tw-actions").classList.add("hidden");
+    art.querySelector(".slot").innerHTML = `<div class="inline">
+      <input type="datetime-local" value="${localInputValue(t.scheduled_at)}">
+      <button class="btn sm ghost" data-act="cancel" data-id="${id}">Cancelar</button>
+      <button class="btn sm primary" data-act="saveTime" data-id="${id}">Programar</button></div>`;
+    return;
+  }
+  if (a === "saveTime") {
+    const v = art.querySelector('input[type="datetime-local"]').value;
+    if (!v) return toast("Elige fecha y hora.", "err");
+    const r = await act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "auto", scheduledAt: new Date(v).toISOString() }), "Programado para " + when(new Date(v).toISOString()));
+    if (r) { editing.delete(id); render(); }
+  }
+});
+
+// ---------- Piloto ----------
+$("#pilotSwitch").addEventListener("click", async () => {
+  const on = !STATE.config.autopilot;
+  if (on && !confirm("¿Encender el piloto automático?\n\nLos tweets AUTOMÁTICOS se publicarán solos a su hora y la IA generará tweets nuevos cada " + STATE.config.generateEveryHours + " h.")) return;
+  await act($("#pilotSwitch"), () => api("/api/autopilot", { on }), on ? "Piloto ENCENDIDO" : "Piloto APAGADO");
+});
+
+// ---------- Pestañas ----------
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  TAB = b.dataset.tab;
+  $$("#tabs button").forEach(x => x.classList.toggle("active", x === b));
+  $$("[data-view]").forEach(v => v.classList.toggle("hidden", v.dataset.view !== TAB));
+  if (TAB === "settings") fillSettings();
+});
+
+// ---------- Segmented controls ----------
+function seg(sel, onChange) {
+  $(sel).addEventListener("click", e => {
+    const b = e.target.closest("button[data-mode]");
+    if (!b) return;
+    $$(sel + " button").forEach(x => x.classList.toggle("on", x === b));
+    onChange?.(b.dataset.mode);
+  });
+}
+const segValue = sel => $(sel + " button.on")?.dataset.mode || "auto";
+const setSeg = (sel, mode) => $$(sel + " button").forEach(x => x.classList.toggle("on", x.dataset.mode === mode));
+seg("#modeSeg"); seg("#genSeg");
+seg("#composeSeg", m => $("#composeWhenWrap").classList.toggle("hidden", m !== "auto"));
+
+// ---------- Generar ----------
+$("#btnGenerate").addEventListener("click", () => {
+  $("#genCount").value = STATE.config.tweetsPerBatch;
+  setSeg("#genSeg", STATE.config.newTweetsMode);
+  $("#dlgGenerate").showModal();
+});
+$("#genForm").addEventListener("submit", e => {
+  if (e.submitter?.value !== "go") return;
+  e.preventDefault();
+  $("#dlgGenerate").close();
+  toast("Generando tweets con la IA… puede tardar un minuto.");
+  act($("#btnGenerate"), () => api("/api/generate", { count: Number($("#genCount").value), mode: segValue("#genSeg") }),
+    r => r.created.length + " tweets nuevos listos para leer");
+});
+
+// ---------- Escribir ----------
+$("#btnCompose").addEventListener("click", () => {
+  $("#composeText").value = "";
+  $("#composeWhen").value = "";
+  $("#composeCount").textContent = "0 / 280";
+  $("#dlgCompose").showModal();
+});
+$("#composeText").addEventListener("input", () => {
+  const n = xLen($("#composeText").value);
+  $("#composeCount").textContent = n + " / 280";
+  $("#composeCount").style.color = n > 280 ? "var(--err)" : "var(--muted)";
+});
+$("#composeForm").addEventListener("submit", e => {
+  if (e.submitter?.value !== "go") return;
+  e.preventDefault();
+  const mode = segValue("#composeSeg");
+  const v = $("#composeWhen").value;
+  act(null, async () => {
+    const r = await api("/api/tweets/create", { text: $("#composeText").value, mode, scheduledAt: mode === "auto" && v ? new Date(v).toISOString() : undefined });
+    $("#dlgCompose").close();
+    return r;
+  }, "Tweet añadido");
+});
+
+// ---------- Ajustes ----------
+function fillSettings() {
+  if (!STATE) return;
+  const c = STATE.config, f = $("#settingsForm");
+  for (const el of f.elements) if (el.name && c[el.name] !== undefined) el.value = c[el.name];
+  setSeg("#modeSeg", c.newTweetsMode);
+}
+$("#settingsForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const body = { newTweetsMode: segValue("#modeSeg") };
+  for (const el of e.target.elements) if (el.name) body[el.name] = el.type === "number" ? Number(el.value) : el.value;
+  act(e.submitter, async () => {
+    const r = await api("/api/config", body);
+    await api("/api/reschedule", {});
+    return r;
+  }, "Ajustes guardados y horarios recalculados");
+});
+$("#btnTestX").addEventListener("click", e => act(e.target, () => api("/api/test-x", {}), r => "X conectado como @" + r.username + " ✅"));
+$("#btnTestAI").addEventListener("click", e => act(e.target, () => api("/api/test-ai", {}), r => "IA responde: " + r.text));
+
+// ---------- Arranque ----------
+setInterval(() => { if (TOKEN && !$("#app").classList.contains("hidden")) refresh().catch(() => {}); }, 30000);
+start();
+</script>
+</body>
+</html>

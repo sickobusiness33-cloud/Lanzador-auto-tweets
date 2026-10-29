@@ -1,0 +1,36 @@
+# Worker de Cloudflare: void-autopilot (Lanzador de tweets de Noticiero VOID)
+# Se despliega solo con cada push a main (Cloudflare Workers Builds).
+name = "void-autopilot"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# No borrar variables puestas a mano en el panel de Cloudflare al desplegar.
+keep_vars = true
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = false
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "void-autopilot-db"
+database_id = "24fea338-a850-4cbe-acc5-61a25a333d2f"
+
+# El piloto automático revisa la cola cada minuto.
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
+
+# Secretos (ya configurados en Cloudflare, no se ponen aquí):
+#   ADMIN_TOKEN            contraseña del panel
+#   X_CONSUMER_KEY         API Key de la app de X
+#   X_CONSUMER_SECRET      API Key Secret
+#   X_ACCESS_TOKEN         Access Token (con permiso Read and write)
+#   X_ACCESS_TOKEN_SECRET  Access Token Secret
