@@ -21,9 +21,18 @@ binding = "DB"
 database_name = "void-autopilot-db"
 database_id = "24fea338-a850-4cbe-acc5-61a25a333d2f"
 
-# El piloto automático revisa la cola cada minuto.
+# El piloto automático se despierta cada minuto con la alarma del Durable Object
+# "Ticker" (el plan gratuito solo permite 5 crons por cuenta y ya están en uso).
 [triggers]
-crons = ["* * * * *"]
+crons = []
+
+[[durable_objects.bindings]]
+name = "TICKER"
+class_name = "Ticker"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Ticker"]
 
 [observability]
 enabled = true

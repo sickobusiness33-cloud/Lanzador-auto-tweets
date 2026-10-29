@@ -2,9 +2,11 @@
 // Lee el RSS de Noticiero VOID, redacta tweets con Workers AI y los publica en X.
 // Cada tweet es AUTOMÁTICO (sale solo a su hora) o MANUAL (espera a que pulses Publicar).
 
+import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "9.0.0";
+const VERSION = "9.1.0";
+const TICK_MS = 60000;
 
 const DEFAULT_CONFIG = {
   autopilot: false,            // interruptor general: publica los automáticos y genera tweets nuevos
@@ -30,8 +32,11 @@ const DEFAULT_CONFIG = {
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // Cualquier visita arranca el reloj del piloto si estaba parado.
+    if (env.TICKER) ctx.waitUntil(ticker(env).fetch("https://ticker/ensure").catch(() => {}));
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
       return new Response(APP_HTML, {
@@ -71,6 +76,45 @@ export default {
 };
 
 class UserError extends Error {}
+
+// ---------------------------------------------------------------------------
+// Reloj del piloto
+// El plan gratuito solo permite 5 crons por cuenta, así que el piloto se despierta
+// con la alarma de un Durable Object (no cuenta para ese límite). Se reprograma
+// solo cada minuto y cada visita al panel lo vuelve a arrancar si se hubiera parado.
+
+export class Ticker extends DurableObject {
+  async fetch() {
+    const next = await this.ctx.storage.getAlarm();
+    if (!next || next < Date.now() - 5 * TICK_MS) await this.ctx.storage.setAlarm(Date.now() + 5000);
+    const lastTick = (await this.ctx.storage.get("lastTick")) || null;
+    return Response.json({ lastTick, nextTick: (await this.ctx.storage.getAlarm()) || null });
+  }
+
+  async alarm() {
+    await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
+    await this.ctx.storage.put("lastTick", Date.now());
+    try {
+      await cron(this.env);
+    } catch (error) {
+      console.error("tick", error);
+      await log(this.env, "error", `Piloto automático: ${error.message || error}`).catch(() => {});
+    }
+  }
+}
+
+function ticker(env) {
+  return env.TICKER.get(env.TICKER.idFromName("main"));
+}
+
+async function tickerStatus(env) {
+  if (!env.TICKER) return { lastTick: null, nextTick: null, missing: true };
+  try {
+    return await (await ticker(env).fetch("https://ticker/ensure")).json();
+  } catch {
+    return { lastTick: null, nextTick: null };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // API
@@ -196,6 +240,7 @@ async function getState(env) {
   const rows = pending.results || [];
   const now = new Date();
   const stats = await getStats(env, cfg, now);
+  const clock = await tickerStatus(env);
 
   return {
     ok: true,
@@ -203,6 +248,7 @@ async function getState(env) {
     now: now.toISOString(),
     config: cfg,
     stats,
+    clock,
     secrets: {
       x: ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"].filter(k => !env[k]),
       ai: Boolean(env.AI)

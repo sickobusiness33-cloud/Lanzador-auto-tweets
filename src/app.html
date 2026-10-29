@@ -487,6 +487,9 @@ function renderAlerts() {
   const s = STATE, out = [];
   if (s.secrets.x.length) out.push(["err", "secrets", "Faltan secretos de X en Cloudflare: " + s.secrets.x.join(", ")]);
   if (!s.secrets.ai) out.push(["err", "ai", "Falta el binding de Workers AI (AI)."]);
+  const tick = s.clock?.lastTick;
+  if (s.clock?.missing) out.push(["err", "clock", "Falta el reloj del piloto (Durable Object TICKER): los automáticos no saldrán."]);
+  else if (s.config.autopilot && tick && Date.now() - tick > 5 * 60000) out.push(["err", "clock", "El reloj del piloto no da señales desde " + rel(new Date(tick).toISOString()) + ". Recarga la página para reactivarlo."]);
   if (!s.config.autopilot && s.auto.length) out.push(["warn", "pilot", `Tienes ${s.auto.length} tweets automáticos pero el piloto está APAGADO: no saldrá ninguno hasta que lo enciendas (arriba a la derecha).`]);
   const lastErr = s.log.find(l => l.level === "error" && Date.now() - Date.parse(l.created_at) < 6 * 3600000);
   if (lastErr) out.push(["err", "e" + lastErr.id, "Último error (" + rel(lastErr.created_at) + "): " + lastErr.message]);
