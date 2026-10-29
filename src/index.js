@@ -11,9 +11,7 @@ const TICK_MS = 60000;
 const DEFAULT_CONFIG = {
   autopilot: false,            // interruptor general: publica los automáticos y genera tweets nuevos
   newTweetsMode: "auto",       // los tweets que genera el piloto: "auto" o "manual"
-  generateEveryHours: 3,
-  tweetsPerBatch: 4,
-  linksPerBatch: 1,            // cuántos tweets de cada tanda llevan el enlace a la noticia
+  linkEvery: 4,                // 1 de cada N tweets lleva el enlace a la noticia en noticierovoid.com (0 = nunca)
   minMinutesBetween: 45,       // separación mínima entre tweets automáticos
   windowStart: 8,              // hora local a partir de la que se publica
   windowEnd: 23,               // hora local hasta la que se publica
@@ -25,7 +23,6 @@ const DEFAULT_CONFIG = {
   rssUrl: "https://noticierovoid.com/rss.xml",
   model: "@cf/zai-org/glm-4.7-flash",
   timezone: "Europe/Madrid",
-  lastGenerationAt: null,
   xUsername: null
 };
 
@@ -129,6 +126,7 @@ async function route(request, url, env) {
 
   if (path === "/api/autopilot") {
     const cfg = await saveConfig(env, { autopilot: Boolean(body.on) });
+    if (body.on) await setKey(env, "nextGenerationCheck", 0); // rellena la cola enseguida
     await log(env, body.on ? "ok" : "warn", body.on ? "Piloto automático ENCENDIDO." : "Piloto automático APAGADO.");
     return json({ ok: true, config: cfg });
   }
@@ -279,14 +277,15 @@ async function getStats(env, cfg, now) {
   const next = await env.DB.prepare(
     "SELECT id, scheduled_at FROM tweets WHERE status='pending' AND mode='auto' ORDER BY scheduled_at LIMIT 1"
   ).first();
+  const next24 = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM tweets WHERE status='pending' AND mode='auto' AND scheduled_at <= ?"
+  ).bind(new Date(now.getTime() + 86400000).toISOString()).first();
 
   return {
     publishedToday,
     spentMonth: Math.round(spentMonth * 100) / 100,
     nextAutoAt: next?.scheduled_at || null,
-    nextGenerationAt: cfg.lastGenerationAt
-      ? new Date(Date.parse(cfg.lastGenerationAt) + cfg.generateEveryHours * 3600000).toISOString()
-      : null
+    queued24h: Number(next24?.n || 0)
   };
 }
 
@@ -299,25 +298,37 @@ async function cron(env) {
   await recoverStuck(env);
   if (!cfg.autopilot) return;
 
+  await fixUnscheduled(env);
   await publishDue(env, cfg);
 
-  const last = cfg.lastGenerationAt ? Date.parse(cfg.lastGenerationAt) : 0;
-  if (Date.now() - last < cfg.generateEveryHours * 3600000) return;
+  // Mantiene la cola llena: siempre hay tweets preparados para las próximas 24 h
+  // (tantos como el máximo diario). Genera de 4 en 4 para que cada vuelta sea corta.
+  const nextCheck = Number(await getKey(env, "nextGenerationCheck")) || 0;
+  if (Date.now() < nextCheck) return;
 
-  // Si ya hay muchos automáticos en cola no generamos más (evita acumular días de tweets).
   const queued = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM tweets WHERE status='pending' AND mode=?"
   ).bind(cfg.newTweetsMode).first();
-  if (Number(queued?.n || 0) >= cfg.maxPerDay) return;
+  const missing = cfg.maxPerDay - Number(queued?.n || 0);
+  if (missing <= 0) return;
 
+  let wait = 20 * 60000;
   try {
-    await generateBatch(env, cfg.tweetsPerBatch, cfg.newTweetsMode, { fromCron: true });
-  } catch (error) {
-    // Reintenta dentro de 15 minutos en vez de esperar la tanda siguiente.
-    const retryAt = Date.now() - cfg.generateEveryHours * 3600000 + 15 * 60000;
-    await saveConfig(env, { lastGenerationAt: new Date(retryAt).toISOString() });
-    throw error;
+    const created = await generateBatch(env, Math.min(4, missing), cfg.newTweetsMode, { fromCron: true });
+    if (created === null) return;            // otra vuelta ya está generando
+    if (created.length) wait = 60000;        // hay noticias: sigue llenando en el siguiente minuto
+  } finally {
+    await setKey(env, "nextGenerationCheck", Date.now() + wait);
   }
+}
+
+// Un automático sin hora (por ejemplo si una vuelta se cortó) recibe el siguiente hueco libre.
+async function fixUnscheduled(env) {
+  const rows = await env.DB.prepare(
+    "SELECT id FROM tweets WHERE status='pending' AND mode='auto' AND scheduled_at IS NULL ORDER BY id"
+  ).all();
+  const ids = (rows.results || []).map(r => r.id);
+  if (ids.length) await scheduleTweets(env, ids);
 }
 
 async function publishDue(env, cfg) {
@@ -464,15 +475,16 @@ async function oauthHeader(env, method, endpoint) {
 
 async function generateBatch(env, count, mode, { fromCron = false } = {}) {
   const lock = await acquireLock(env, "generate", 600);
-  if (!lock) throw new UserError("Ya se están generando tweets. Espera un momento.");
+  if (!lock) {
+    if (fromCron) return null;
+    throw new UserError("Ya se están generando tweets. Espera un momento.");
+  }
 
   try {
     const cfg = await getConfig(env);
     const articles = await fetchArticles(env, cfg);
-    if (fromCron) await saveConfig(env, { lastGenerationAt: new Date().toISOString() });
 
     if (!articles.length) {
-      await log(env, "info", "No hay noticias nuevas en el RSS para tuitear.");
       if (fromCron) return [];
       throw new UserError("No hay noticias nuevas en el RSS (todas tienen ya su tweet o son antiguas).");
     }
@@ -483,19 +495,19 @@ async function generateBatch(env, count, mode, { fromCron = false } = {}) {
 
     for (let i = 0; i < selected.length; i++) {
       const article = selected[i];
-      const withLink = i >= selected.length - Math.min(cfg.linksPerBatch, selected.length);
       try {
+        const withLink = await nextNeedsLink(env, cfg);
         const text = await writeTweet(env, cfg, article, withLink);
         const id = await insertTweet(env, {
           text, mode, articleUrl: article.url, articleTitle: article.title
         });
+        // Se programa en cuanto se crea, así nunca queda un automático sin hora.
+        if (mode === "auto") await scheduleTweets(env, [id]);
         created.push(id);
       } catch (error) {
         failures.push(`${article.title}: ${error.message || error}`);
       }
     }
-
-    if (mode === "auto" && created.length) await scheduleTweets(env, created);
 
     if (created.length) {
       await log(env, "ok", `${created.length} tweets nuevos creados como ${modeName(mode)}.`);
@@ -509,6 +521,20 @@ async function generateBatch(env, count, mode, { fromCron = false } = {}) {
   } finally {
     await releaseLock(env, "generate", lock);
   }
+}
+
+// Lleva enlace si desde el último tweet con enlace ya van (linkEvery - 1) sin él.
+async function nextNeedsLink(env, cfg) {
+  const every = Number(cfg.linkEvery);
+  if (!every) return false;
+  if (every === 1) return true;
+  const lastLinked = await env.DB.prepare(
+    "SELECT MAX(id) AS id FROM tweets WHERE article_url IS NOT NULL AND has_link=1"
+  ).first();
+  const since = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM tweets WHERE article_url IS NOT NULL AND id > ?"
+  ).bind(Number(lastLinked?.id || 0)).first();
+  return Number(since?.n || 0) >= every - 1;
 }
 
 async function writeTweet(env, cfg, article, withLink) {
@@ -793,9 +819,7 @@ function validateConfig(body) {
     out[key] = n;
   };
 
-  num("generateEveryHours", 1, 24);
-  num("tweetsPerBatch", 1, 8);
-  num("linksPerBatch", 0, 8);
+  num("linkEvery", 0, 20);
   num("minMinutesBetween", 0, 600);
   num("windowStart", 0, 23);
   num("windowEnd", 0, 24);
@@ -805,7 +829,7 @@ function validateConfig(body) {
   num("costPerTweetEur", 0, 10);
   num("costPerLinkTweetEur", 0, 10);
 
-  for (const key of ["windowStart", "windowEnd", "tweetsPerBatch", "linksPerBatch", "maxPerDay"]) {
+  for (const key of ["windowStart", "windowEnd", "linkEvery", "maxPerDay"]) {
     if (out[key] !== undefined) out[key] = Math.round(out[key]);
   }
 
@@ -837,6 +861,17 @@ function validateConfig(body) {
   }
 
   return out;
+}
+
+async function getKey(env, key) {
+  const row = await env.DB.prepare("SELECT value FROM tw_config WHERE key=?").bind(key).first();
+  return row ? row.value : null;
+}
+
+async function setKey(env, key, value) {
+  await env.DB.prepare(
+    "INSERT INTO tw_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+  ).bind(key, String(value)).run();
 }
 
 async function insertTweet(env, { text, mode, articleUrl, articleTitle }) {

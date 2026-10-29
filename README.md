@@ -8,13 +8,13 @@ Panel: https://void-autopilot.tureganovictor79.workers.dev (contraseña = secret
 
 Cada tweet es de uno de estos dos tipos:
 
-- **🤖 Automático**: tiene una hora y sale solo cuando llega, si el **piloto automático** está encendido.
+- **🤖 Automático**: tiene una hora y sale solo cuando llega, mientras el bot esté **en marcha** (botón «▶ Poner en marcha»).
 - **✋ Manual**: no sale nunca solo. Lo lees y pulsas **Publicar ahora**, o lo pasas a automático.
 
-Con el piloto encendido, el worker revisa la cola cada minuto (con la alarma de un Durable Object, porque el plan gratuito solo permite 5 crons por cuenta):
+Con el bot en marcha, el worker revisa la cola cada minuto (con la alarma de un Durable Object, porque el plan gratuito solo permite 5 crons por cuenta):
 
 1. Publica el siguiente automático que ya toque, respetando el horario, la separación mínima, el máximo diario y el presupuesto.
-2. Cada N horas lee el RSS y redacta una tanda de tweets nuevos (automáticos o manuales, según los Ajustes).
+2. Mantiene la cola llena: siempre hay tantos tweets preparados como el máximo diario (unas 24 h), para revisarlos antes de que salgan. 1 de cada 4 lleva el enlace a la noticia en noticierovoid.com (configurable).
 
 Todo se cambia desde la pestaña **Ajustes** del panel.
 

@@ -40,6 +40,15 @@ main{max-width:1500px;margin:auto;padding:16px 16px 80px}
 .pilot{display:flex;align-items:center;gap:12px;border:1px solid var(--line2);border-radius:14px;padding:8px 10px 8px 14px;background:var(--panel)}
 .pilot .label{font-size:12px;color:var(--muted);line-height:1.2}
 .pilot .label b{display:block;font-size:14px;color:var(--text)}
+.run{border:0;border-radius:12px;padding:12px 20px;font-weight:900;font-size:16px;letter-spacing:.02em;background:var(--ok);color:#04140a;white-space:nowrap}
+.run.on{background:transparent;color:#ffb3bf;border:1px solid #5a2530}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--err);margin-right:6px}
+.dot.on{background:var(--ok);box-shadow:0 0 0 0 rgba(98,214,143,.6);animation:pulse 1.6s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(98,214,143,0)}100%{box-shadow:0 0 0 0 rgba(98,214,143,0)}}
+.hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,#10261f,#121722);border:1px solid #24493d;border-radius:16px;padding:16px 18px;margin-bottom:14px}
+.hero h2{margin:0;font-size:18px}.hero p{margin:2px 0 0;color:var(--muted);font-size:14px}
+.hero .run{margin-left:auto;font-size:18px;padding:14px 26px}
+.sep{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 4px 0}
 .switch{width:58px;height:32px;border-radius:99px;border:0;background:#3a4357;position:relative;transition:.2s;flex:none}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:.2s}
 .switch.on{background:var(--ok)}
@@ -178,8 +187,8 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
         <div><b>Lanzador de tweets</b><small id="account">Noticiero VOID</small></div>
       </div>
       <div class="pilot">
-        <div class="label">Piloto automático<b id="pilotText">—</b></div>
-        <button id="pilotSwitch" class="switch" aria-label="Encender o apagar el piloto automático"></button>
+        <div class="label">Estado<b><span class="dot" id="pilotDot"></span><span id="pilotText">—</span></b></div>
+        <button id="pilotSwitch" class="run">▶ PONER EN MARCHA</button>
       </div>
     </div>
   </header>
@@ -187,11 +196,19 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
   <main>
     <div id="alerts"></div>
 
+    <div class="hero hidden" id="hero">
+      <div>
+        <h2>El bot está parado</h2>
+        <p>Revisa los tweets de las próximas 24 horas, cambia los que quieras y pulsa <b>Poner en marcha</b>. A partir de ahí publica solo y va preparando tweets nuevos.</p>
+      </div>
+      <button class="run" id="heroRun">▶ PONER EN MARCHA</button>
+    </div>
+
     <div class="stats">
       <div class="stat"><span>Próximo tweet automático</span><b id="sNext">—</b><small id="sNextRel"></small></div>
       <div class="stat"><span>Publicados hoy</span><b id="sToday">—</b><small id="sTodayMax"></small></div>
       <div class="stat"><span>Gasto este mes</span><b id="sSpent">—</b><small id="sBudget"></small></div>
-      <div class="stat"><span>Próxima tanda de la IA</span><b id="sGen">—</b><small id="sGenRel"></small></div>
+      <div class="stat"><span>Preparados próximas 24 h</span><b id="sGen">—</b><small id="sGenRel"></small></div>
     </div>
 
     <div class="bar">
@@ -210,7 +227,7 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
       <div class="board">
         <div class="col auto">
           <div class="col-head">
-            <div><h2>🤖 Automáticos</h2><p>Salen solos a la hora indicada (con el piloto encendido)</p></div>
+            <div><h2>🤖 Automáticos</h2><p>Salen solos a su hora mientras el bot esté en marcha</p></div>
             <div class="count" id="cAuto">0</div>
           </div>
           <div class="list" id="listAuto"></div>
@@ -233,7 +250,7 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
       <form id="settingsForm" class="settings">
         <div class="card">
           <h3>🤖 Qué hace la IA</h3>
-          <p>Cada cierto tiempo lee el RSS y redacta tweets nuevos (solo con el piloto encendido).</p>
+          <p>Lee el RSS de noticierovoid.com y redacta tweets nuevos (solo con el bot en marcha).</p>
           <div class="field">
             <label>Los tweets nuevos de la IA van a…</label>
             <div class="seg" id="modeSeg">
@@ -242,8 +259,8 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
             </div>
             <small>Automáticos: se programan y salen solos. Manuales: esperan a que los revises.</small>
           </div>
-          <div class="field"><label>Generar una tanda cada</label><div class="row"><input name="generateEveryHours" type="number" min="1" max="24"> horas</div></div>
-          <div class="field"><label>Tweets por tanda</label><div class="row"><input name="tweetsPerBatch" type="number" min="1" max="8"> tweets, de los cuales <input name="linksPerBatch" type="number" min="0" max="8"> llevan enlace</div><small>Con enlace a la noticia cuesta bastante más en X.</small></div>
+          <div class="field"><label>Enlace a noticierovoid.com</label><div class="row">1 de cada <input name="linkEvery" type="number" min="0" max="20"> tweets lleva el enlace a la noticia</div><small>Con enlace cuesta bastante más en X. 0 = nunca lleva enlace.</small></div>
+          <p style="color:var(--muted);font-size:13px;margin:0">Con el bot en marcha, la IA mantiene siempre preparados tantos tweets como el «Máximo al día» (unas 24 h de cola), para que puedas revisarlos antes de que salgan.</p>
         </div>
 
         <div class="card">
@@ -357,7 +374,7 @@ async function act(button, fn, okMsg) {
   } catch (e) {
     toast(e.message, "err");
   } finally {
-    if (button) { button.disabled = false; button.textContent = old; }
+    if (button) { button.disabled = false; if (button.textContent === "…") button.textContent = old; }
   }
 }
 
@@ -450,19 +467,23 @@ function render() {
 
   $("#account").textContent = c.xUsername ? "@" + c.xUsername + " · Noticiero VOID" : "Noticiero VOID · X sin comprobar";
   $("#pilotSwitch").classList.toggle("on", c.autopilot);
-  $("#pilotText").textContent = c.autopilot ? "ENCENDIDO" : "APAGADO";
+  $("#pilotSwitch").textContent = c.autopilot ? "⏸ PARAR" : "▶ PONER EN MARCHA";
+  $("#pilotDot").classList.toggle("on", c.autopilot);
+  $("#pilotText").textContent = c.autopilot ? "Funcionando solo" : "Parado";
   $("#pilotText").style.color = c.autopilot ? "var(--ok)" : "var(--err)";
+  $("#hero").classList.toggle("hidden", c.autopilot);
 
   const next = s.stats.nextAutoAt;
   $("#sNext").textContent = next ? when(next) : "Ninguno en cola";
-  $("#sNextRel").textContent = next ? (c.autopilot ? rel(next) : "no saldrá: piloto apagado") : "";
+  $("#sNextRel").textContent = next ? (c.autopilot ? rel(next) : "no saldrá: bot parado") : "";
   $("#sToday").textContent = s.stats.publishedToday;
   $("#sTodayMax").textContent = "máximo " + c.maxPerDay + " automáticos/día";
   $("#sSpent").textContent = eur(s.stats.spentMonth);
   $("#sBudget").textContent = "de " + eur(c.monthlyBudgetEur) + " de presupuesto";
-  if (!c.autopilot) { $("#sGen").textContent = "En pausa"; $("#sGenRel").textContent = "enciende el piloto"; }
-  else if (!s.stats.nextGenerationAt || Date.parse(s.stats.nextGenerationAt) <= Date.now()) { $("#sGen").textContent = "En el próximo minuto"; $("#sGenRel").textContent = ""; }
-  else { $("#sGen").textContent = when(s.stats.nextGenerationAt); $("#sGenRel").textContent = rel(s.stats.nextGenerationAt) + " · " + c.tweetsPerBatch + " tweets"; }
+  $("#sGen").textContent = s.stats.queued24h + " tweets";
+  $("#sGenRel").textContent = c.autopilot
+    ? (s.stats.queued24h < c.maxPerDay ? "la IA está preparando más (objetivo " + c.maxPerDay + ")" : "cola llena")
+    : "pon en marcha para que se rellene";
 
   renderAlerts();
 
@@ -490,7 +511,6 @@ function renderAlerts() {
   const tick = s.clock?.lastTick;
   if (s.clock?.missing) out.push(["err", "clock", "Falta el reloj del piloto (Durable Object TICKER): los automáticos no saldrán."]);
   else if (s.config.autopilot && tick && Date.now() - tick > 5 * 60000) out.push(["err", "clock", "El reloj del piloto no da señales desde " + rel(new Date(tick).toISOString()) + ". Recarga la página para reactivarlo."]);
-  if (!s.config.autopilot && s.auto.length) out.push(["warn", "pilot", `Tienes ${s.auto.length} tweets automáticos pero el piloto está APAGADO: no saldrá ninguno hasta que lo enciendas (arriba a la derecha).`]);
   const lastErr = s.log.find(l => l.level === "error" && Date.now() - Date.parse(l.created_at) < 6 * 3600000);
   if (lastErr) out.push(["err", "e" + lastErr.id, "Último error (" + rel(lastErr.created_at) + "): " + lastErr.message]);
   $("#alerts").innerHTML = out.filter(a => !dismissed.has(a[1])).map(([k, id, m]) =>
@@ -503,6 +523,14 @@ function paintList(sel, items, emptyText) {
   if (!items.length) { el.innerHTML = `<p class="empty">${esc(emptyText)}</p>`; return; }
   // Si hay un tweet en edición en esta lista, solo actualizamos los demás.
   if ([...editing].some(id => el.querySelector(`[data-id="${id}"]`))) return;
+  if (sel === "#listAuto") {
+    const limit = Date.now() + 86400000;
+    const soon = items.filter(t => !t.scheduled_at || Date.parse(t.scheduled_at) <= limit);
+    const later = items.filter(t => t.scheduled_at && Date.parse(t.scheduled_at) > limit);
+    el.innerHTML = `<div class="sep">Próximas 24 horas · ${soon.length}</div>` + soon.map(card).join("") +
+      (later.length ? `<div class="sep">Más adelante · ${later.length}</div>` + later.map(card).join("") : "");
+    return;
+  }
   el.innerHTML = items.map(card).join("");
 }
 
@@ -515,7 +543,7 @@ function card(t) {
   else if (t.mode === "auto") {
     badge = '<span class="badge auto">Auto</span>';
     const late = t.scheduled_at && Date.parse(t.scheduled_at) < Date.now();
-    whenTxt = t.scheduled_at ? `<span class="when ${late ? "late" : ""}">🕒 ${esc(when(t.scheduled_at))}</span><span>${esc(late ? (STATE.config.autopilot ? "sale en breve" : "atrasado · piloto apagado") : rel(t.scheduled_at))}</span>` : "<span>sin hora</span>";
+    whenTxt = t.scheduled_at ? `<span class="when ${late ? "late" : ""}">🕒 ${esc(when(t.scheduled_at))}</span><span>${esc(late ? (STATE.config.autopilot ? "sale en breve" : "atrasado · bot parado") : rel(t.scheduled_at))}</span>` : "<span>sin hora</span>";
   } else badge = '<span class="badge manual">Manual</span><span>espera tu OK</span>';
 
   const link = t.has_link ? "<span>🔗 con enlace</span>" : "";
@@ -612,9 +640,9 @@ document.addEventListener("click", async e => {
 // ---------- Piloto ----------
 $("#pilotSwitch").addEventListener("click", async () => {
   const on = !STATE.config.autopilot;
-  if (on && !confirm("¿Encender el piloto automático?\n\nLos tweets AUTOMÁTICOS se publicarán solos a su hora y la IA generará tweets nuevos cada " + STATE.config.generateEveryHours + " h.")) return;
-  await act($("#pilotSwitch"), () => api("/api/autopilot", { on }), on ? "Piloto ENCENDIDO" : "Piloto APAGADO");
+  await act($("#pilotSwitch"), () => api("/api/autopilot", { on }), on ? "▶ En marcha: publica solo y prepara tweets nuevos" : "⏸ Bot parado: no saldrá nada solo");
 });
+$("#heroRun").addEventListener("click", () => $("#pilotSwitch").click());
 
 // ---------- Pestañas ----------
 $("#tabs").addEventListener("click", e => {
@@ -642,7 +670,7 @@ seg("#composeSeg", m => $("#composeWhenWrap").classList.toggle("hidden", m !== "
 
 // ---------- Generar ----------
 $("#btnGenerate").addEventListener("click", () => {
-  $("#genCount").value = STATE.config.tweetsPerBatch;
+  $("#genCount").value = 4;
   setSeg("#genSeg", STATE.config.newTweetsMode);
   $("#dlgGenerate").showModal();
 });
