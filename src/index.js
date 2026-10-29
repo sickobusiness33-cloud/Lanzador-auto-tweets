@@ -5,17 +5,20 @@
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "9.1.0";
+const VERSION = "9.2.0";
 const TICK_MS = 60000;
 
 const DEFAULT_CONFIG = {
   autopilot: false,            // interruptor general: publica los automáticos y genera tweets nuevos
   newTweetsMode: "auto",       // los tweets que genera el piloto: "auto" o "manual"
   linkEvery: 4,                // 1 de cada N tweets lleva el enlace a la noticia en noticierovoid.com (0 = nunca)
+  language: "en",              // idioma de los tweets: "en" (inglés) o "es" (español)
+  // Plan del día: cuántos tweets de cada tema. La suma es el máximo diario.
+  topicPlan: { crypto: 4, stocks: 4, macro: 3, ai: 3, commodities: 1, finance: 1, politics: 0, other: 0 },
   minMinutesBetween: 45,       // separación mínima entre tweets automáticos
   windowStart: 8,              // hora local a partir de la que se publica
   windowEnd: 23,               // hora local hasta la que se publica
-  maxPerDay: 16,               // máximo de tweets automáticos al día
+  maxPerDay: 16,               // se calcula solo: es la suma del plan del día
   maxArticleAgeHours: 72,
   monthlyBudgetEur: 16,
   costPerTweetEur: 0.016,
@@ -27,6 +30,42 @@ const DEFAULT_CONFIG = {
 };
 
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
+
+// Temas. El RSS no trae categorías, así que cada noticia se clasifica por palabras clave
+// (el titular pesa el triple que el resumen). En empate gana el que va antes en la lista.
+const TOPICS = {
+  crypto: { label: "Cripto", emoji: "🪙", words: ["bitcoin", "btc", "ethereum", "ether", "eth", "crypto", "cryptocurrency", "cryptocurrencies", "solana", "xrp", "ripple", "dogecoin", "stablecoin", "stablecoins", "tether", "usdt", "usdc", "blockchain", "defi", "nft", "nfts", "token", "tokens", "tokenized", "tokenization", "binance", "coinbase", "kraken", "web3", "altcoin", "altcoins", "memecoin", "satoshi", "digital asset", "digital assets", "wallet", "cz", "saylor", "microstrategy", "on-chain", "onchain"] },
+  macro: { label: "Macro y bancos centrales", emoji: "🏦", words: ["fed", "federal reserve", "ecb", "boe", "boj", "central bank", "interest rate", "interest rates", "rate cut", "rate cuts", "rate hike", "inflation", "cpi", "pce", "gdp", "jobs report", "payrolls", "unemployment", "treasury", "treasuries", "yields", "recession", "tariff", "tariffs", "warsh", "powell", "lagarde", "economy", "monetary policy", "dollar", "forex", "currency", "currencies", "euro", "yen"] },
+  commodities: { label: "Materias primas", emoji: "🛢️", words: ["oil", "crude", "brent", "wti", "opec", "gold", "silver", "copper", "natural gas", "lng", "coal", "lithium", "uranium", "wheat", "commodity", "commodities", "mine", "mining", "rare earths", "barrel"] },
+  ai: { label: "IA y tecnología", emoji: "🤖", words: ["ai", "artificial intelligence", "openai", "chatgpt", "gpt", "nvidia", "gemini", "anthropic", "claude", "copilot", "llm", "chip", "chips", "semiconductor", "semiconductors", "cloud", "cybersecurity", "software", "agent", "agents", "agentic", "robot", "robotics", "quantum", "data center", "google", "alphabet", "microsoft", "apple", "meta", "amazon", "tesla", "github"] },
+  stocks: { label: "Acciones y resultados", emoji: "📈", words: ["stock", "stocks", "shares", "earnings", "eps", "revenue", "price target", "upgrade", "upgrades", "downgrade", "downgrades", "ipo", "dividend", "nasdaq", "s&p", "dow", "wall street", "guidance", "buyback", "q1", "q2", "q3", "q4", "quarterly", "beats", "misses", "rally", "market cap", "analyst", "rating", "estimates"] },
+  finance: { label: "Finanzas y empresas", emoji: "💼", words: ["bank", "banks", "banking", "fund", "funds", "aum", "etf", "asset manager", "hedge fund", "private equity", "acquisition", "acquires", "merger", "deal", "private placement", "bond", "bonds", "insurer", "insurance", "loan", "loans", "credit", "capital", "venture", "raises", "funding", "capex", "leverage"] },
+  politics: { label: "Política y geopolítica", emoji: "🌍", words: ["election", "elections", "midterm", "midterms", "campaign", "governor", "president", "trump", "congress", "senate", "war", "sanctions", "china", "russia", "ukraine", "israel", "iran", "geopolitical", "government", "minister", "parliament", "regulation", "regulators", "sec"] },
+  other: { label: "Otros", emoji: "📰", words: [] }
+};
+
+const TOPIC_PATTERNS = Object.fromEntries(Object.entries(TOPICS).map(([key, t]) => [
+  key,
+  t.words.map(w => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i"))
+]));
+
+export function classifyTopic(title, description = "") {
+  let best = "other";
+  let bestScore = 0;
+  for (const [key, patterns] of Object.entries(TOPIC_PATTERNS)) {
+    let score = 0;
+    for (const re of patterns) {
+      if (re.test(title)) score += 3;
+      else if (re.test(description)) score += 1;
+    }
+    if (score > bestScore) { best = key; bestScore = score; }
+  }
+  return best;
+}
+
+function planTotal(plan) {
+  return Object.keys(TOPICS).reduce((sum, key) => sum + (Number(plan?.[key]) || 0), 0);
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -140,7 +179,8 @@ async function route(request, url, env) {
   if (path === "/api/generate") {
     const count = clampInt(body.count, 1, 8, 4);
     const mode = body.mode === "manual" ? "manual" : "auto";
-    const created = await generateBatch(env, count, mode);
+    const topic = TOPICS[body.topic] ? body.topic : null;
+    const created = await generateBatch(env, count, mode, { topic });
     return json({ ok: true, created });
   }
 
@@ -149,10 +189,26 @@ async function route(request, url, env) {
     checkLength(text);
     const mode = body.mode === "manual" ? "manual" : "auto";
     if (mode === "auto") checkFutureTime(body.scheduledAt);
-    const id = await insertTweet(env, { text, mode, articleUrl: null, articleTitle: "Escrito a mano" });
+    const topic = TOPICS[body.topic] ? body.topic : classifyTopic(text);
+    const id = await insertTweet(env, { text, mode, articleUrl: null, articleTitle: "Escrito a mano", topic });
     if (mode === "auto") await scheduleTweets(env, [id], body.scheduledAt);
     await log(env, "info", `Tweet #${id} escrito a mano (${modeName(mode)}).`);
     return json({ ok: true, id });
+  }
+
+  // Rehace con la IA (en el idioma configurado) hasta 3 tweets pendientes que no estén en ese idioma.
+  if (path === "/api/rewrite-pending") {
+    const cfg = await getConfig(env);
+    const rows = await env.DB.prepare(
+      "SELECT * FROM tweets WHERE status IN ('pending','error') AND article_url IS NOT NULL ORDER BY scheduled_at IS NULL, scheduled_at, id"
+    ).all();
+    const todo = (rows.results || []).filter(t => looksSpanish(t.text) !== (cfg.language === "es"));
+    let done = 0;
+    for (const tweet of todo.slice(0, 3)) {
+      await rewriteTweet(env, cfg, tweet);
+      done++;
+    }
+    return json({ ok: true, done, remaining: todo.length - done });
   }
 
   if (path === "/api/reschedule") {
@@ -175,7 +231,7 @@ async function route(request, url, env) {
     return json({ ok: true, model: cfg.model, text });
   }
 
-  const match = path.match(/^\/api\/tweets\/(\d+)\/(edit|mode|publish|retry|delete)$/);
+  const match = path.match(/^\/api\/tweets\/(\d+)\/(edit|mode|publish|retry|delete|rewrite)$/);
   if (match) return json(await tweetAction(env, Number(match[1]), match[2], body));
 
   throw new UserError("Ruta no encontrada.");
@@ -209,6 +265,12 @@ async function tweetAction(env, id, action, body) {
       .bind(mode, id).run();
     if (mode === "auto") await scheduleTweets(env, [id], body.scheduledAt);
     await log(env, "info", `Tweet #${id} pasado a ${modeName(mode)}.`);
+    return { ok: true };
+  }
+
+  if (action === "rewrite") {
+    if (!tweet.article_url) throw new UserError("Este tweet no viene de una noticia: edítalo a mano.");
+    await rewriteTweet(env, await getConfig(env), tweet);
     return { ok: true };
   }
 
@@ -251,12 +313,20 @@ async function getState(env) {
       x: ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"].filter(k => !env[k]),
       ai: Boolean(env.AI)
     },
+    topics: Object.fromEntries(Object.entries(TOPICS).map(([k, t]) => [k, { label: t.label, emoji: t.emoji }])),
+    prepared: countByTopic(rows.filter(t => t.mode === cfg.newTweetsMode)),
     auto: rows.filter(t => t.mode === "auto"),
     manual: rows.filter(t => t.mode === "manual"),
     published: published.results || [],
     errors: errors.results || [],
     log: logRows.results || []
   };
+}
+
+function countByTopic(rows) {
+  const out = Object.fromEntries(Object.keys(TOPICS).map(k => [k, 0]));
+  for (const t of rows) out[TOPICS[t.topic] ? t.topic : "other"]++;
+  return out;
 }
 
 async function getStats(env, cfg, now) {
@@ -307,14 +377,20 @@ async function cron(env) {
   if (Date.now() < nextCheck) return;
 
   const queued = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM tweets WHERE status='pending' AND mode=?"
-  ).bind(cfg.newTweetsMode).first();
-  const missing = cfg.maxPerDay - Number(queued?.n || 0);
+    "SELECT topic FROM tweets WHERE status='pending' AND mode=?"
+  ).bind(cfg.newTweetsMode).all();
+  const have = countByTopic(queued.results || []);
+  const quota = {};
+  let missing = 0;
+  for (const key of Object.keys(TOPICS)) {
+    quota[key] = Math.max(0, (Number(cfg.topicPlan?.[key]) || 0) - have[key]);
+    missing += quota[key];
+  }
   if (missing <= 0) return;
 
   let wait = 20 * 60000;
   try {
-    const created = await generateBatch(env, Math.min(4, missing), cfg.newTweetsMode, { fromCron: true });
+    const created = await generateBatch(env, Math.min(4, missing), cfg.newTweetsMode, { fromCron: true, quota });
     if (created === null) return;            // otra vuelta ya está generando
     if (created.length) wait = 60000;        // hay noticias: sigue llenando en el siguiente minuto
   } finally {
@@ -473,7 +549,7 @@ async function oauthHeader(env, method, endpoint) {
 // ---------------------------------------------------------------------------
 // Generar tweets con IA
 
-async function generateBatch(env, count, mode, { fromCron = false } = {}) {
+async function generateBatch(env, count, mode, { fromCron = false, topic = null, quota = null } = {}) {
   const lock = await acquireLock(env, "generate", 600);
   if (!lock) {
     if (fromCron) return null;
@@ -482,14 +558,28 @@ async function generateBatch(env, count, mode, { fromCron = false } = {}) {
 
   try {
     const cfg = await getConfig(env);
-    const articles = await fetchArticles(env, cfg);
+    let articles = await fetchArticles(env, cfg);
+    if (topic) articles = articles.filter(a => a.topic === topic);
 
-    if (!articles.length) {
-      if (fromCron) return [];
-      throw new UserError("No hay noticias nuevas en el RSS (todas tienen ya su tweet o son antiguas).");
+    // Con plan diario: solo coge noticias de los temas a los que aún les faltan tweets.
+    let selected = [];
+    if (quota) {
+      const left = { ...quota };
+      for (const a of articles) {
+        if (selected.length >= count) break;
+        if (left[a.topic] > 0) { selected.push(a); left[a.topic]--; }
+      }
+    } else {
+      selected = articles.slice(0, count);
     }
 
-    const selected = articles.slice(0, count);
+    if (!selected.length) {
+      if (fromCron) return [];
+      throw new UserError(topic
+        ? `No hay noticias nuevas de «${TOPICS[topic].label}» en el RSS ahora mismo.`
+        : "No hay noticias nuevas en el RSS (todas tienen ya su tweet o son antiguas).");
+    }
+
     const created = [];
     const failures = [];
 
@@ -499,7 +589,8 @@ async function generateBatch(env, count, mode, { fromCron = false } = {}) {
         const withLink = await nextNeedsLink(env, cfg);
         const text = await writeTweet(env, cfg, article, withLink);
         const id = await insertTweet(env, {
-          text, mode, articleUrl: article.url, articleTitle: article.title
+          text, mode, articleUrl: article.url, articleTitle: article.title,
+          articleSummary: article.description, topic: article.topic
         });
         // Se programa en cuanto se crea, así nunca queda un automático sin hora.
         if (mode === "auto") await scheduleTweets(env, [id]);
@@ -523,6 +614,20 @@ async function generateBatch(env, count, mode, { fromCron = false } = {}) {
   }
 }
 
+async function rewriteTweet(env, cfg, tweet) {
+  const article = { title: tweet.article_title || "", description: tweet.article_summary || "", url: tweet.article_url };
+  const text = await writeTweet(env, cfg, article, Boolean(tweet.has_link));
+  await env.DB.prepare("UPDATE tweets SET text=?, has_link=?, topic=COALESCE(topic, ?) WHERE id=?")
+    .bind(text, hasLink(text) ? 1 : 0, classifyTopic(article.title, article.description), tweet.id).run();
+}
+
+// Detección sencilla de español (para avisar de tweets en el idioma equivocado).
+function looksSpanish(text) {
+  const t = String(text).replace(/https?:\/\/\S+/g, "");
+  const hits = (t.match(/\b(el|los|las|del|que|para|tras|según|una|por|con|sus|más|está|han|sobre)\b/gi) || []).length;
+  return /[ñ¿¡]/i.test(t) || hits >= 3;
+}
+
 // Lleva enlace si desde el último tweet con enlace ya van (linkEvery - 1) sin él.
 async function nextNeedsLink(env, cfg) {
   const every = Number(cfg.linkEvery);
@@ -541,23 +646,36 @@ async function writeTweet(env, cfg, article, withLink) {
   const maxBody = withLink ? 280 - X_URL_LENGTH - 1 : 280;
   const target = Math.min(240, maxBody - 10);
 
-  const prompt = [
-    "Escribe UN tweet para la cuenta de Noticiero VOID (noticias de mercados, cripto, tecnología e IA).",
+  const prompt = cfg.language === "es" ? [
+    "Escribe UN tweet para la cuenta de X de Noticiero VOID (noticias de mercados, cripto, tecnología e IA).",
     "Reglas:",
-    "- Español de España, tono periodístico, directo y con gancho.",
+    "- Español de España, tono de agencia de noticias: directo, claro y con gancho.",
     "- Si la noticia está en inglés, tradúcela.",
     `- Máximo ${target} caracteres.`,
     "- Usa solo los datos de la noticia. No inventes cifras, fechas ni declaraciones.",
-    "- Sin hashtags, sin enlaces, sin comillas alrededor del texto.",
+    "- Sin hashtags, sin enlaces, sin emojis y sin comillas alrededor del texto.",
     "- Devuelve solo el texto del tweet, nada más.",
     "",
     `TITULAR: ${article.title}`,
-    `RESUMEN: ${article.description.slice(0, 1500) || "(sin resumen)"}`
-  ].join("\n");
+    `RESUMEN: ${(article.description || "").slice(0, 1500) || "(sin resumen)"}`
+  ] : [
+    "Write ONE tweet for the X account of Noticiero VOID (markets, crypto, tech and AI news).",
+    "Rules:",
+    "- Write in English, in a sharp newswire style: direct, clear, with a hook.",
+    "- If the article is not in English, translate it.",
+    `- Maximum ${target} characters.`,
+    "- Use only facts from the article. Do not invent numbers, dates or quotes.",
+    "- No hashtags, no links, no emojis and no quotation marks around the text.",
+    "- Return only the tweet text, nothing else.",
+    "",
+    `HEADLINE: ${article.title}`,
+    `SUMMARY: ${(article.description || "").slice(0, 1500) || "(no summary)"}`
+  ];
+  const promptText = prompt.join("\n");
 
   let text = "";
   for (let attempt = 0; attempt < 2 && text.length < 20; attempt++) {
-    text = tidyAIText(await askAI(env, cfg.model, prompt, 2000));
+    text = tidyAIText(await askAI(env, cfg.model, promptText, 2000));
   }
   if (text.length < 20) throw new Error("respuesta vacía de la IA");
 
@@ -573,7 +691,7 @@ async function askAI(env, model, prompt, maxTokens) {
   if (!env.AI) throw new UserError("Falta el binding de Workers AI (AI).");
   const result = await env.AI.run(model, {
     messages: [
-      { role: "system", content: "Eres el editor de redes sociales de un medio de noticias. Eres riguroso y conciso." },
+      { role: "system", content: "You are the social media editor of a financial news outlet. You are rigorous and concise." },
       { role: "user", content: prompt }
     ],
     max_tokens: maxTokens
@@ -597,7 +715,7 @@ function tidyAIText(text) {
     .replace(/^```\w*\s*|```$/g, "")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/#\w+/g, "")
-    .replace(/^\s*(tweet|texto)\s*:\s*/i, "")
+    .replace(/^\s*(tweet|texto|text)\s*:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^["'“”«»]+|["'“”«»]+$/g, "")
@@ -632,7 +750,9 @@ async function fetchArticles(env, cfg) {
 
     if (!title || !/^https?:\/\//i.test(link)) continue;
     if (Number.isFinite(date) && (now - date) / 3600000 > cfg.maxArticleAgeHours) continue;
-    if (!found.has(link)) found.set(link, { title, url: link, description, date: Number.isFinite(date) ? date : 0 });
+    if (!found.has(link)) {
+      found.set(link, { title, url: link, description, date: Number.isFinite(date) ? date : 0, topic: classifyTopic(title, description) });
+    }
   }
 
   const links = [...found.keys()];
@@ -792,6 +912,10 @@ async function ensureSchema(env) {
     )`),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS tw_locks(name TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at INTEGER NOT NULL)")
   ]);
+  const columns = new Set(((await env.DB.prepare("PRAGMA table_info(tweets)").all()).results || []).map(c => c.name));
+  for (const [name, type] of [["topic", "TEXT"], ["article_summary", "TEXT"]]) {
+    if (!columns.has(name)) await env.DB.prepare(`ALTER TABLE tweets ADD COLUMN ${name} ${type}`).run();
+  }
   schemaReady = true;
 }
 
@@ -799,7 +923,10 @@ async function getConfig(env) {
   const row = await env.DB.prepare("SELECT value FROM tw_config WHERE key='config'").first();
   let stored = {};
   try { stored = row ? JSON.parse(row.value) : {}; } catch {}
-  return { ...DEFAULT_CONFIG, ...stored };
+  const cfg = { ...DEFAULT_CONFIG, ...stored };
+  cfg.topicPlan = { ...DEFAULT_CONFIG.topicPlan, ...(stored.topicPlan || {}) };
+  cfg.maxPerDay = planTotal(cfg.topicPlan); // el máximo diario es la suma del plan
+  return cfg;
 }
 
 async function saveConfig(env, patch) {
@@ -823,14 +950,28 @@ function validateConfig(body) {
   num("minMinutesBetween", 0, 600);
   num("windowStart", 0, 23);
   num("windowEnd", 0, 24);
-  num("maxPerDay", 1, 100);
   num("maxArticleAgeHours", 1, 720);
   num("monthlyBudgetEur", 0, 10000);
   num("costPerTweetEur", 0, 10);
   num("costPerLinkTweetEur", 0, 10);
 
-  for (const key of ["windowStart", "windowEnd", "linkEvery", "maxPerDay"]) {
+  for (const key of ["windowStart", "windowEnd", "linkEvery"]) {
     if (out[key] !== undefined) out[key] = Math.round(out[key]);
+  }
+
+  if (body.language !== undefined) out.language = body.language === "es" ? "es" : "en";
+
+  if (body.topicPlan !== undefined) {
+    const plan = {};
+    for (const key of Object.keys(TOPICS)) {
+      const n = Math.round(Number(body.topicPlan?.[key]) || 0);
+      if (n < 0 || n > 50) throw new UserError("Cada tema debe tener entre 0 y 50 tweets.");
+      plan[key] = n;
+    }
+    const total = planTotal(plan);
+    if (total < 1 || total > 100) throw new UserError("El plan del día debe sumar entre 1 y 100 tweets.");
+    out.topicPlan = plan;
+    out.maxPerDay = total;
   }
 
   if (body.newTweetsMode !== undefined) out.newTweetsMode = body.newTweetsMode === "manual" ? "manual" : "auto";
@@ -874,11 +1015,11 @@ async function setKey(env, key, value) {
   ).bind(key, String(value)).run();
 }
 
-async function insertTweet(env, { text, mode, articleUrl, articleTitle }) {
+async function insertTweet(env, { text, mode, articleUrl, articleTitle, articleSummary = null, topic = "other" }) {
   const result = await env.DB.prepare(`
-    INSERT INTO tweets(text, mode, status, has_link, article_url, article_title, created_at)
-    VALUES(?, ?, 'pending', ?, ?, ?, ?)
-  `).bind(text, mode, hasLink(text) ? 1 : 0, articleUrl, articleTitle, new Date().toISOString()).run();
+    INSERT INTO tweets(text, mode, status, has_link, article_url, article_title, article_summary, topic, created_at)
+    VALUES(?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+  `).bind(text, mode, hasLink(text) ? 1 : 0, articleUrl, articleTitle, articleSummary, TOPICS[topic] ? topic : "other", new Date().toISOString()).run();
   return result.meta.last_row_id;
 }
 

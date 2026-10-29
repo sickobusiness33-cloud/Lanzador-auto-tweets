@@ -14,7 +14,9 @@ Cada tweet es de uno de estos dos tipos:
 Con el bot en marcha, el worker revisa la cola cada minuto (con la alarma de un Durable Object, porque el plan gratuito solo permite 5 crons por cuenta):
 
 1. Publica el siguiente automático que ya toque, respetando el horario, la separación mínima, el máximo diario y el presupuesto.
-2. Mantiene la cola llena: siempre hay tantos tweets preparados como el máximo diario (unas 24 h), para revisarlos antes de que salgan. 1 de cada 4 lleva el enlace a la noticia en noticierovoid.com (configurable).
+2. Mantiene la cola llena según el **Plan del día**: cuántos tweets de cada tema (Cripto, Macro, Materias primas, IA, Acciones, Finanzas, Política, Otros). La suma es el máximo diario. 1 de cada 4 lleva el enlace a la noticia en noticierovoid.com (configurable).
+
+Los tweets se escriben en **inglés** (o en español, si se elige en el plan). El RSS no trae categorías, así que cada noticia se clasifica por palabras clave (`TOPICS` en `src/index.js`).
 
 Todo se cambia desde la pestaña **Ajustes** del panel.
 

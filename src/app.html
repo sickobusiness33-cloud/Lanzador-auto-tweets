@@ -9,7 +9,7 @@
 :root{
   color-scheme:dark;
   --bg:#0a0d14;--panel:#121722;--panel2:#181f2d;--line:#252e40;--line2:#323d54;
-  --text:#e8edf6;--muted:#8a96ab;--faint:#5d6880;
+  --text:#e8edf6;--muted:#8d99ae;--faint:#5d6880;
   --auto:#5ad1b3;--auto-bg:#0f2a26;--manual:#f5b84f;--manual-bg:#2c2312;
   --ok:#62d68f;--err:#ff6b7f;--err-bg:#2d1419;--blue:#7aa2ff;
 }
@@ -27,85 +27,86 @@ a{color:var(--blue)}
 .login form{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;display:grid;gap:14px}
 .login h1{margin:0;font-size:22px}
 
-/* Layout */
+/* Cabecera */
 header{position:sticky;top:0;z-index:20;background:rgba(10,13,20,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-.head{max-width:1500px;margin:auto;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.head{max-width:1400px;margin:auto;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
-.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#5ad1b3,#7aa2ff);display:grid;place-items:center;color:#06121a;font-weight:900}
-.brand b{display:block;font-size:16px;letter-spacing:.02em}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(140deg,#5ad1b3,#7aa2ff);display:grid;place-items:center;color:#06121a;font-weight:900}
+.brand b{display:block;font-size:17px}
 .brand small{color:var(--muted);font-size:12px}
-main{max-width:1500px;margin:auto;padding:16px 16px 80px}
-
-/* Autopilot switch */
-.pilot{display:flex;align-items:center;gap:12px;border:1px solid var(--line2);border-radius:14px;padding:8px 10px 8px 14px;background:var(--panel)}
-.pilot .label{font-size:12px;color:var(--muted);line-height:1.2}
-.pilot .label b{display:block;font-size:14px;color:var(--text)}
-.run{border:0;border-radius:12px;padding:12px 20px;font-weight:900;font-size:16px;letter-spacing:.02em;background:var(--ok);color:#04140a;white-space:nowrap}
+.status{display:flex;align-items:center;gap:12px}
+.status-text{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--err)}
+.dot.on{background:var(--ok);animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(98,214,143,.6)}70%{box-shadow:0 0 0 9px rgba(98,214,143,0)}100%{box-shadow:0 0 0 0 rgba(98,214,143,0)}}
+.run{border:0;border-radius:12px;padding:11px 20px;font-weight:900;font-size:15px;background:var(--ok);color:#04140a;white-space:nowrap}
 .run.on{background:transparent;color:#ffb3bf;border:1px solid #5a2530}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--err);margin-right:6px}
-.dot.on{background:var(--ok);box-shadow:0 0 0 0 rgba(98,214,143,.6);animation:pulse 1.6s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(98,214,143,0)}100%{box-shadow:0 0 0 0 rgba(98,214,143,0)}}
-.hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,#10261f,#121722);border:1px solid #24493d;border-radius:16px;padding:16px 18px;margin-bottom:14px}
-.hero h2{margin:0;font-size:18px}.hero p{margin:2px 0 0;color:var(--muted);font-size:14px}
-.hero .run{margin-left:auto;font-size:18px;padding:14px 26px}
-.sep{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 4px 0}
-.switch{width:58px;height:32px;border-radius:99px;border:0;background:#3a4357;position:relative;transition:.2s;flex:none}
-.switch::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:.2s}
-.switch.on{background:var(--ok)}
-.switch.on::after{left:29px}
+main{max-width:1400px;margin:auto;padding:16px 16px 90px}
 
-/* Stats */
+/* Bloque "bot parado" */
+.hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,#10261f,#121722);border:1px solid #24493d;border-radius:16px;padding:18px 20px;margin-bottom:14px}
+.hero h2{margin:0;font-size:19px}.hero p{margin:4px 0 0;color:var(--muted)}
+.hero .run{margin-left:auto;font-size:18px;padding:15px 28px}
+
+/* Avisos */
+.alert{border-radius:12px;padding:12px 14px;margin-bottom:10px;border:1px solid;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.alert.err{background:var(--err-bg);border-color:#5a2530;color:#ffc2cb}
+.alert.warn{background:var(--manual-bg);border-color:#5a4520;color:#ffe0a8}
+.alert .grow{flex:1;min-width:200px}
+.alert .x{background:none;border:0;color:inherit;opacity:.7;font-size:20px;line-height:1}
+
+/* Resumen */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
 .stat span{display:block;color:var(--muted);font-size:12px}
-.stat b{display:block;font-size:20px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat b{display:block;font-size:21px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat small{color:var(--muted);font-size:12px}
+.bar-mini{height:6px;background:var(--line);border-radius:9px;margin-top:6px;overflow:hidden}
+.bar-mini i{display:block;height:100%;background:var(--auto);border-radius:9px}
 
-/* Alerts */
-.alert{border-radius:12px;padding:12px 14px;margin-bottom:10px;border:1px solid;display:flex;gap:10px;align-items:flex-start}
-.alert.err{background:var(--err-bg);border-color:#5a2530;color:#ffc2cb}
-.alert.warn{background:var(--manual-bg);border-color:#5a4520;color:#ffe0a8}
-.alert .x{margin-left:auto;background:none;border:0;color:inherit;opacity:.7;font-size:18px;line-height:1}
-
-/* Toolbar + tabs */
-.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+/* Pestañas y botones */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;overflow-x:auto;scrollbar-width:none;margin-right:auto;max-width:100%}
 .tabs button{background:none;border:0;border-radius:9px;padding:8px 12px;color:var(--muted);white-space:nowrap;font-weight:600}
 .tabs button.active{background:var(--panel2);color:var(--text)}
-.tabs .n{display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;border-radius:99px;background:var(--line);font-size:12px;color:var(--text)}
+.tabs .n{display:inline-block;min-width:20px;padding:0 6px;margin-left:4px;border-radius:99px;background:var(--line);font-size:12px;color:var(--text);text-align:center}
 .tabs .n.red{background:var(--err);color:#200}
-.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:10px;padding:9px 14px;font-weight:600;white-space:nowrap}
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:10px;padding:9px 14px;font-weight:600;white-space:nowrap;text-decoration:none;color:var(--text);display:inline-flex;align-items:center;gap:6px}
 .btn:hover{border-color:#46526d}
 .btn.primary{background:var(--auto);border-color:var(--auto);color:#04140f}
-.btn.amber{background:var(--manual);border-color:var(--manual);color:#1d1404}
 .btn.danger{color:#ff9aa8;border-color:#5a2530;background:transparent}
 .btn.ghost{background:transparent}
 .btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
 
-/* Board */
-.board{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+/* Columnas de la cola */
+.board{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
 .col{background:var(--panel);border:1px solid var(--line);border-radius:16px;min-width:0}
 .col-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-.col-head h2{margin:0;font-size:16px}
-.col-head p{margin:0;color:var(--muted);font-size:12px}
-.col-head .count{margin-left:auto;font-size:22px;font-weight:800}
-.col.auto .col-head{border-top:3px solid var(--auto);border-radius:16px 16px 0 0}
-.col.manual .col-head{border-top:3px solid var(--manual);border-radius:16px 16px 0 0}
+.col-head h2{margin:0;font-size:17px}
+.col-head p{margin:0;color:var(--muted);font-size:13px}
+.col-head .count{margin-left:auto;font-size:24px;font-weight:800}
+.col.auto{border-top:3px solid var(--auto)}
+.col.manual{border-top:3px solid var(--manual)}
 .list{padding:10px;display:grid;gap:10px}
-.empty{color:var(--muted);text-align:center;padding:30px 16px;font-size:14px}
+.empty{color:var(--muted);text-align:center;padding:28px 16px}
+.sep{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:6px 4px 0}
 
-/* Tweet card */
-.tw{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+/* Tweet */
+.tw{background:var(--bg);border:1px solid var(--line);border-radius:14px;display:flex;min-width:0}
 .tw.err{border-color:#5a2530}
-.tw-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)}
-.badge{font-weight:800;font-size:11px;letter-spacing:.05em;padding:3px 8px;border-radius:6px;text-transform:uppercase}
-.badge.auto{background:var(--auto-bg);color:var(--auto)}
-.badge.manual{background:var(--manual-bg);color:var(--manual)}
-.badge.ok{background:#11291b;color:var(--ok)}
-.badge.err{background:var(--err-bg);color:var(--err)}
-.badge.send{background:#16223d;color:var(--blue)}
-.when{color:var(--text);font-weight:600}
-.when.late{color:var(--manual)}
+.tw-time{flex:none;width:96px;padding:14px 10px 14px 14px;border-right:1px solid var(--line);text-align:left}
+.tw-time b{display:block;font-size:22px;letter-spacing:-.02em;line-height:1.1}
+.tw-time small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.tw-time.late b{color:var(--manual)}
+.tw-body{flex:1;min-width:0;padding:12px 14px}
+.tw-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)}
+.chip{font-weight:700;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--panel2);border:1px solid var(--line2);color:var(--text);white-space:nowrap}
+.chip.link{background:#16223d;border-color:#2a3d66;color:#a9c1ff}
+.chip.auto{background:var(--auto-bg);border-color:#1e4a40;color:var(--auto)}
+.chip.manual{background:var(--manual-bg);border-color:#4d3d1c;color:var(--manual)}
+.chip.ok{background:#11291b;border-color:#1f4a31;color:var(--ok)}
+.chip.err{background:var(--err-bg);border-color:#5a2530;color:var(--err)}
+.chip.lang{background:#2c2312;border-color:#5a4520;color:#ffd27a}
 .chars{margin-left:auto}
 .chars.over{color:var(--err);font-weight:700}
 .tw-text{white-space:pre-wrap;word-wrap:break-word;font-size:16px;line-height:1.45}
@@ -117,52 +118,70 @@ main{max-width:1500px;margin:auto;padding:16px 16px 80px}
 .tw textarea{width:100%;min-height:120px;resize:vertical;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:10px;font-size:16px;line-height:1.45}
 .inline{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
 
-/* Forms */
+/* Formularios */
 input,select,textarea{background:var(--bg);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;min-width:0}
 input:focus,select:focus,textarea:focus{outline:2px solid #2f6f60;border-color:var(--auto)}
-.settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
-.card h3{margin:0 0 4px;font-size:16px}
-.card > p{margin:0 0 14px;color:var(--muted);font-size:13px}
-.field{display:grid;gap:4px;margin-bottom:12px}
-.field label{font-weight:600;font-size:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card h3{margin:0 0 4px;font-size:17px}
+.card > p{margin:0 0 14px;color:var(--muted);font-size:14px}
+.field{display:grid;gap:5px;margin-bottom:14px}
+.field label{font-weight:600}
 .field small{color:var(--muted);font-size:12px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.row input{width:90px}
+.row input[type=number]{width:84px}
 .seg{justify-self:start;display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
 .seg button{border:0;background:transparent;padding:8px 14px;font-weight:600;color:var(--muted)}
-.seg button.on.auto{background:var(--auto);color:#04140f}
-.seg button.on.manual{background:var(--manual);color:#1d1404}
+.seg button.on{background:var(--auto);color:#04140f}
+.seg.amber button.on[data-mode=manual]{background:var(--manual);color:#1d1404}
 
-/* Log */
+/* Plan del día */
+.plan{display:grid;gap:8px}
+.topic{display:flex;align-items:center;gap:12px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.topic .em{font-size:22px;width:30px;text-align:center}
+.topic .name{flex:1;min-width:0}
+.topic .name b{display:block}
+.topic .name small{color:var(--muted)}
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);font-size:20px;font-weight:700;line-height:1}
+.stepper output{width:40px;text-align:center;font-size:20px;font-weight:800}
+.total{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.total b{font-size:26px}
+.total span{color:var(--muted)}
+.total .warn{color:var(--manual)}
+
+/* Actividad */
 .log{display:grid;gap:2px}
 .log div{display:flex;gap:10px;padding:8px 10px;border-radius:8px;font-size:14px}
 .log div:nth-child(odd){background:var(--panel)}
-.log time{color:var(--muted);white-space:nowrap;font-size:12px;padding-top:2px;min-width:92px}
+.log time{color:var(--muted);white-space:nowrap;font-size:12px;padding-top:2px;min-width:96px}
 .log .error{color:#ffb3bf}.log .ok{color:#a9ecc3}.log .warn{color:#ffe0a8}
 
-/* Dialog */
-dialog{background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:18px;padding:20px;width:min(520px,calc(100vw - 32px))}
+/* Diálogos */
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line2);border-radius:18px;padding:22px;width:min(520px,calc(100vw - 32px))}
 dialog::backdrop{background:rgba(0,0,0,.6)}
 dialog h3{margin:0 0 12px}
 dialog textarea{width:100%;min-height:140px;font-size:16px}
 .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap}
 
-/* Toast */
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;display:grid;gap:8px;width:min(520px,calc(100vw - 32px))}
 .toast{background:#1d2535;border:1px solid var(--line2);border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:14px}
 .toast.err{background:var(--err-bg);border-color:#5a2530;color:#ffc2cb}
 .toast.ok{border-color:#245a3a}
 
-@media (max-width:900px){
-  .board,.settings{grid-template-columns:1fr}
+@media (max-width:960px){
+  .board,.grid2{grid-template-columns:1fr}
   .stats{grid-template-columns:1fr 1fr}
 }
-@media (max-width:520px){
+@media (max-width:560px){
   .head{padding:10px 12px}
-  main{padding:12px 12px 80px}
-  .pilot{width:100%;justify-content:space-between}
-  .stat b{font-size:17px}
+  main{padding:12px 12px 90px}
+  .status{width:100%;justify-content:space-between}
+  .stat b{font-size:18px}
+  .tw{flex-direction:column}
+  .tw-time{width:auto;border-right:0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline;padding:10px 14px}
+  .tw-time b{font-size:18px}
+  .tw-time small{margin:0}
 }
 </style>
 </head>
@@ -186,43 +205,45 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
         <div class="logo">V</div>
         <div><b>Lanzador de tweets</b><small id="account">Noticiero VOID</small></div>
       </div>
-      <div class="pilot">
-        <div class="label">Estado<b><span class="dot" id="pilotDot"></span><span id="pilotText">—</span></b></div>
+      <div class="status">
+        <span class="status-text"><span class="dot" id="pilotDot"></span><span id="pilotText">—</span></span>
         <button id="pilotSwitch" class="run">▶ PONER EN MARCHA</button>
       </div>
     </div>
   </header>
 
   <main>
-    <div id="alerts"></div>
-
     <div class="hero hidden" id="hero">
       <div>
         <h2>El bot está parado</h2>
-        <p>Revisa los tweets de las próximas 24 horas, cambia los que quieras y pulsa <b>Poner en marcha</b>. A partir de ahí publica solo y va preparando tweets nuevos.</p>
+        <p>Revisa los tweets de las próximas 24 horas, cambia lo que quieras y pulsa <b>Poner en marcha</b>. Desde ese momento publica solo y va preparando tweets nuevos según tu plan del día.</p>
       </div>
       <button class="run" id="heroRun">▶ PONER EN MARCHA</button>
     </div>
 
+    <div id="alerts"></div>
+
     <div class="stats">
-      <div class="stat"><span>Próximo tweet automático</span><b id="sNext">—</b><small id="sNextRel"></small></div>
-      <div class="stat"><span>Publicados hoy</span><b id="sToday">—</b><small id="sTodayMax"></small></div>
-      <div class="stat"><span>Gasto este mes</span><b id="sSpent">—</b><small id="sBudget"></small></div>
-      <div class="stat"><span>Preparados próximas 24 h</span><b id="sGen">—</b><small id="sGenRel"></small></div>
+      <div class="stat"><span>Próximo tweet</span><b id="sNext">—</b><small id="sNextRel"></small></div>
+      <div class="stat"><span>Publicados hoy</span><b id="sToday">—</b><div class="bar-mini"><i id="sTodayBar" style="width:0"></i></div></div>
+      <div class="stat"><span>Preparados (próximas 24 h)</span><b id="sQueued">—</b><small id="sQueuedRel"></small></div>
+      <div class="stat"><span>Gasto este mes</span><b id="sSpent">—</b><div class="bar-mini"><i id="sSpentBar" style="width:0"></i></div></div>
     </div>
 
-    <div class="bar">
+    <div class="toolbar">
       <nav class="tabs" id="tabs">
-        <button data-tab="queue" class="active">Cola <span class="n" id="nQueue">0</span></button>
-        <button data-tab="published">Publicados <span class="n" id="nPub">0</span></button>
-        <button data-tab="errors">Errores <span class="n" id="nErr">0</span></button>
-        <button data-tab="log">Actividad</button>
-        <button data-tab="settings">Ajustes</button>
+        <button data-tab="queue" class="active">🗓 Próximos <span class="n" id="nQueue">0</span></button>
+        <button data-tab="plan">🎯 Plan del día</button>
+        <button data-tab="published">✅ Publicados <span class="n" id="nPub">0</span></button>
+        <button data-tab="errors">⚠️ Errores <span class="n" id="nErr">0</span></button>
+        <button data-tab="log">📜 Actividad</button>
+        <button data-tab="settings">⚙️ Ajustes</button>
       </nav>
-      <button class="btn primary" id="btnGenerate">✨ Generar tweets</button>
-      <button class="btn" id="btnCompose">✍️ Escribir tweet</button>
+      <button class="btn primary" id="btnGenerate">✨ Generar ahora</button>
+      <button class="btn" id="btnCompose">✍️ Escribir</button>
     </div>
 
+    <!-- Próximos -->
     <section data-view="queue">
       <div class="board">
         <div class="col auto">
@@ -234,10 +255,46 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
         </div>
         <div class="col manual">
           <div class="col-head">
-            <div><h2>✋ Manuales</h2><p>No salen hasta que pulses «Publicar ahora»</p></div>
+            <div><h2>✋ Manuales</h2><p>Solo salen si pulsas «Publicar ya»</p></div>
             <div class="count" id="cManual">0</div>
           </div>
           <div class="list" id="listManual"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Plan del día -->
+    <section data-view="plan" class="hidden">
+      <div class="total" id="planTotal"></div>
+      <div class="grid2">
+        <div class="card">
+          <h3>🎯 ¿Cuántos tweets al día y de qué temas?</h3>
+          <p>La IA elige noticias del RSS de cada tema hasta completar estas cantidades. Pon 0 en lo que no quieras.</p>
+          <div class="plan" id="planList"></div>
+        </div>
+        <div class="stack" style="display:grid;gap:14px;align-content:start">
+          <div class="card">
+            <h3>🔗 Enlace a noticierovoid.com</h3>
+            <p>El enlace lleva a la noticia en tu web. En X un tweet con enlace cuesta bastante más.</p>
+            <div class="field"><div class="row">1 de cada <input id="linkEvery" type="number" min="0" max="20"> tweets lleva enlace</div><small>0 = ningún tweet lleva enlace.</small></div>
+          </div>
+          <div class="card">
+            <h3>🌐 Idioma de los tweets</h3>
+            <p>En qué idioma escribe la IA los tweets nuevos.</p>
+            <div class="seg" id="langSeg">
+              <button type="button" data-mode="en">🇬🇧 English</button>
+              <button type="button" data-mode="es">🇪🇸 Español</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>🤖 Los tweets nuevos de la IA van a…</h3>
+            <p>Automáticos: se programan y salen solos. Manuales: esperan a que los publiques tú.</p>
+            <div class="seg amber" id="modeSeg">
+              <button type="button" data-mode="auto">Automáticos</button>
+              <button type="button" data-mode="manual">Manuales</button>
+            </div>
+          </div>
+          <button class="btn primary" id="btnSavePlan" style="justify-content:center;padding:13px">Guardar plan del día</button>
         </div>
       </div>
     </section>
@@ -246,74 +303,66 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
     <section data-view="errors" class="hidden"><div class="list" id="listErrors" style="padding:0"></div></section>
     <section data-view="log" class="hidden"><div class="card"><div class="log" id="logList"></div></div></section>
 
+    <!-- Ajustes -->
     <section data-view="settings" class="hidden">
-      <form id="settingsForm" class="settings">
-        <div class="card">
-          <h3>🤖 Qué hace la IA</h3>
-          <p>Lee el RSS de noticierovoid.com y redacta tweets nuevos (solo con el bot en marcha).</p>
-          <div class="field">
-            <label>Los tweets nuevos de la IA van a…</label>
-            <div class="seg" id="modeSeg">
-              <button type="button" data-mode="auto" class="auto">Automáticos</button>
-              <button type="button" data-mode="manual" class="manual">Manuales</button>
-            </div>
-            <small>Automáticos: se programan y salen solos. Manuales: esperan a que los revises.</small>
-          </div>
-          <div class="field"><label>Enlace a noticierovoid.com</label><div class="row">1 de cada <input name="linkEvery" type="number" min="0" max="20"> tweets lleva el enlace a la noticia</div><small>Con enlace cuesta bastante más en X. 0 = nunca lleva enlace.</small></div>
-          <p style="color:var(--muted);font-size:13px;margin:0">Con el bot en marcha, la IA mantiene siempre preparados tantos tweets como el «Máximo al día» (unas 24 h de cola), para que puedas revisarlos antes de que salgan.</p>
-        </div>
-
+      <form id="settingsForm" class="grid2">
         <div class="card">
           <h3>🕒 Cuándo se publica</h3>
-          <p>Los automáticos se reparten solos en huecos que cumplan estas reglas.</p>
+          <p>Los automáticos se reparten solos en huecos que cumplan estas reglas (hora de Madrid).</p>
           <div class="field"><label>Horario de publicación</label><div class="row">de <input name="windowStart" type="number" min="0" max="23"> h a <input name="windowEnd" type="number" min="0" max="24"> h</div></div>
           <div class="field"><label>Separación mínima entre tweets</label><div class="row"><input name="minMinutesBetween" type="number" min="0" max="600"> minutos</div></div>
-          <div class="field"><label>Máximo al día</label><div class="row"><input name="maxPerDay" type="number" min="1" max="100"> tweets</div></div>
+          <p style="color:var(--muted);font-size:13px;margin:0">El número de tweets al día se elige en <b>🎯 Plan del día</b>.</p>
         </div>
 
         <div class="card">
           <h3>💶 Dinero</h3>
-          <p>Si un tweet haría pasar el presupuesto, no se publica.</p>
+          <p>Si un tweet haría pasar el presupuesto del mes, no se publica.</p>
           <div class="field"><label>Presupuesto mensual</label><div class="row"><input name="monthlyBudgetEur" type="number" min="0" step="0.5"> €</div></div>
-          <div class="field"><label>Coste por tweet</label><div class="row"><input name="costPerTweetEur" type="number" min="0" step="0.001"> € normal · <input name="costPerLinkTweetEur" type="number" min="0" step="0.001"> € con enlace</div></div>
+          <div class="field"><label>Coste de cada tweet en X</label><div class="row"><input name="costPerTweetEur" type="number" min="0" step="0.001"> € sin enlace · <input name="costPerLinkTweetEur" type="number" min="0" step="0.001"> € con enlace</div></div>
         </div>
 
         <div class="card">
-          <h3>📰 Fuente y pruebas</h3>
-          <p>De dónde salen las noticias y comprobar que todo conecta.</p>
+          <h3>📰 Fuente de noticias</h3>
+          <p>De dónde salen las noticias.</p>
           <div class="field"><label>RSS</label><input name="rssUrl" type="url"></div>
-          <div class="field"><label>Noticias de como mucho</label><div class="row"><input name="maxArticleAgeHours" type="number" min="1" max="720"> horas de antigüedad</div></div>
+          <div class="field"><label>Usar noticias de como mucho</label><div class="row"><input name="maxArticleAgeHours" type="number" min="1" max="720"> horas</div></div>
           <div class="field"><label>Modelo de IA</label><input name="model"><small>Por defecto @cf/zai-org/glm-4.7-flash</small></div>
+        </div>
+
+        <div class="card">
+          <h3>🧪 Comprobaciones</h3>
+          <p>Prueba que todo conecta.</p>
           <div class="row">
             <button type="button" class="btn" id="btnTestX">Probar conexión con X</button>
             <button type="button" class="btn" id="btnTestAI">Probar IA</button>
+            <button type="button" class="btn ghost" id="btnLogout">Cerrar sesión</button>
           </div>
         </div>
 
-        <div style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
-          <button class="btn primary" type="submit">Guardar ajustes</button>
+        <div style="grid-column:1/-1;display:flex;justify-content:flex-end">
+          <button class="btn primary" type="submit" style="padding:13px 22px">Guardar ajustes</button>
         </div>
       </form>
-      <p style="color:var(--muted);font-size:12px;margin-top:16px">Al guardar se recalculan los horarios de los automáticos. <button class="btn sm ghost" id="btnLogout" type="button">Cerrar sesión</button></p>
     </section>
   </main>
 </section>
 
 <dialog id="dlgGenerate">
   <form method="dialog" id="genForm">
-    <h3>✨ Generar tweets con la IA</h3>
-    <p style="color:var(--muted);margin-top:0">Lee las noticias nuevas del RSS y redacta un tweet por noticia.</p>
+    <h3>✨ Generar tweets ahora</h3>
+    <p style="color:var(--muted);margin-top:0">La IA coge noticias nuevas del RSS y escribe un tweet por noticia.</p>
     <div class="field"><label>¿Cuántos?</label><div class="row"><input id="genCount" type="number" min="1" max="8" value="4"> tweets</div></div>
+    <div class="field"><label>¿De qué tema?</label><select id="genTopic"></select></div>
     <div class="field">
       <label>Que vayan a…</label>
-      <div class="seg" id="genSeg">
-        <button type="button" data-mode="auto" class="auto on">Automáticos</button>
-        <button type="button" data-mode="manual" class="manual">Manuales</button>
+      <div class="seg amber" id="genSeg">
+        <button type="button" data-mode="auto" class="on">Automáticos</button>
+        <button type="button" data-mode="manual">Manuales</button>
       </div>
     </div>
     <div class="dialog-actions">
       <button class="btn ghost" value="cancel" formnovalidate>Cancelar</button>
-      <button class="btn primary" id="genGo" value="go">Generar</button>
+      <button class="btn primary" value="go">Generar</button>
     </div>
   </form>
 </dialog>
@@ -321,13 +370,13 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
 <dialog id="dlgCompose">
   <form method="dialog" id="composeForm">
     <h3>✍️ Escribir un tweet</h3>
-    <textarea id="composeText" placeholder="¿Qué quieres publicar?"></textarea>
-    <div class="row" style="justify-content:space-between;margin-top:6px"><small id="composeCount" style="color:var(--muted)">0 / 280</small></div>
+    <textarea id="composeText" placeholder="What do you want to post?"></textarea>
+    <div class="row" style="margin-top:6px"><small id="composeCount" style="color:var(--muted)">0 / 280</small></div>
     <div class="field" style="margin-top:10px">
       <label>Que vaya a…</label>
-      <div class="seg" id="composeSeg">
-        <button type="button" data-mode="manual" class="manual on">Manuales</button>
-        <button type="button" data-mode="auto" class="auto">Automáticos</button>
+      <div class="seg amber" id="composeSeg">
+        <button type="button" data-mode="manual" class="on">Manuales</button>
+        <button type="button" data-mode="auto">Automáticos</button>
       </div>
     </div>
     <div class="field hidden" id="composeWhenWrap"><label>Hora (opcional)</label><input id="composeWhen" type="datetime-local"><small>Vacío = el siguiente hueco libre.</small></div>
@@ -347,8 +396,10 @@ let TOKEN = "";
 try { TOKEN = localStorage.getItem("void_token") || ""; } catch {}
 let STATE = null;
 let TAB = "queue";
-const editing = new Set();      // ids en modo edición (no se repintan al refrescar)
+let PLAN = null;                // copia editable del plan del día
+const editing = new Set();      // tweets abiertos para editar (no se repintan al refrescar)
 const dismissed = new Set();
+let rewriting = false;
 
 // ---------- API ----------
 async function api(path, body) {
@@ -393,7 +444,6 @@ function showLogin(msg = "") {
   $("#loginError").textContent = msg;
   $("#tokenInput").focus();
 }
-
 $("#loginForm").addEventListener("submit", async e => {
   e.preventDefault();
   TOKEN = $("#tokenInput").value.trim();
@@ -401,13 +451,11 @@ $("#loginForm").addEventListener("submit", async e => {
   $("#loginError").textContent = "";
   await start();
 });
-
 $("#btnLogout").addEventListener("click", () => {
   try { localStorage.removeItem("void_token"); } catch {}
   TOKEN = "";
   showLogin();
 });
-
 async function start() {
   if (!TOKEN) return showLogin();
   try {
@@ -415,9 +463,9 @@ async function start() {
     $("#login").classList.add("hidden");
     $("#app").classList.remove("hidden");
     fillSettings();
+    fillPlan();
   } catch (e) {
-    if (!$("#app").classList.contains("hidden")) return;
-    showLogin(e.message);
+    if ($("#app").classList.contains("hidden")) showLogin(e.message);
   }
 }
 
@@ -427,34 +475,38 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
 const xLen = s => [...String(s).replace(/https?:\/\/\S+/g, "x".repeat(23))].length;
 const eur = n => Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+const topicOf = t => STATE.topics[t.topic] || STATE.topics.other;
 
+function dayKey(d) { return new Intl.DateTimeFormat("en-CA", { timeZone: tz() }).format(d); }
 function dayLabel(d) {
-  const fmt = x => new Intl.DateTimeFormat("en-CA", { timeZone: tz() }).format(x);
-  const today = fmt(new Date()), tomorrow = fmt(new Date(Date.now() + 86400000)), yesterday = fmt(new Date(Date.now() - 86400000));
-  const day = fmt(d);
-  if (day === today) return "hoy";
-  if (day === tomorrow) return "mañana";
-  if (day === yesterday) return "ayer";
+  const day = dayKey(d);
+  if (day === dayKey(new Date())) return "hoy";
+  if (day === dayKey(new Date(Date.now() + 86400000))) return "mañana";
+  if (day === dayKey(new Date(Date.now() - 86400000))) return "ayer";
   return new Intl.DateTimeFormat("es-ES", { timeZone: tz(), weekday: "short", day: "numeric", month: "short" }).format(d);
 }
-function when(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return dayLabel(d) + " " + new Intl.DateTimeFormat("es-ES", { timeZone: tz(), hour: "2-digit", minute: "2-digit" }).format(d);
-}
+const hhmm = iso => new Intl.DateTimeFormat("es-ES", { timeZone: tz(), hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+const when = iso => iso ? dayLabel(new Date(iso)) + " " + hhmm(iso) : "—";
 function rel(iso) {
   if (!iso) return "";
   const m = Math.round((Date.parse(iso) - Date.now()) / 60000);
   const abs = Math.abs(m);
-  const txt = abs < 1 ? "ahora" : abs < 60 ? abs + " min" : abs < 1440 ? Math.floor(abs / 60) + " h " + (abs % 60 ? (abs % 60) + " min" : "") : Math.round(abs / 1440) + " días";
   if (abs < 1) return "ahora mismo";
-  return m > 0 ? "en " + txt.trim() : "hace " + txt.trim();
+  const txt = abs < 60 ? abs + " min" : abs < 1440 ? Math.floor(abs / 60) + " h" + (abs % 60 ? " " + (abs % 60) + " min" : "") : Math.round(abs / 1440) + " días";
+  return m > 0 ? "en " + txt : "hace " + txt;
 }
 function localInputValue(iso) {
   const d = iso ? new Date(iso) : new Date(Date.now() + 3600000);
   const p = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+// Detección sencilla de idioma (igual que en el servidor).
+function looksSpanish(text) {
+  const t = String(text).replace(/https?:\/\/\S+/g, "");
+  const hits = (t.match(/\b(el|los|las|del|que|para|tras|según|una|por|con|sus|más|está|han|sobre)\b/gi) || []).length;
+  return /[ñ¿¡]/i.test(t) || hits >= 3;
+}
+const wrongLang = t => t.article_url && looksSpanish(t.text) !== (STATE.config.language === "es");
 
 // ---------- Pintar ----------
 async function refresh() {
@@ -465,25 +517,26 @@ async function refresh() {
 function render() {
   const s = STATE, c = s.config;
 
-  $("#account").textContent = c.xUsername ? "@" + c.xUsername + " · Noticiero VOID" : "Noticiero VOID · X sin comprobar";
-  $("#pilotSwitch").classList.toggle("on", c.autopilot);
-  $("#pilotSwitch").textContent = c.autopilot ? "⏸ PARAR" : "▶ PONER EN MARCHA";
-  $("#pilotDot").classList.toggle("on", c.autopilot);
-  $("#pilotText").textContent = c.autopilot ? "Funcionando solo" : "Parado";
-  $("#pilotText").style.color = c.autopilot ? "var(--ok)" : "var(--err)";
-  $("#hero").classList.toggle("hidden", c.autopilot);
+  $("#account").textContent = c.xUsername ? "@" + c.xUsername : "Noticiero VOID";
+  const on = c.autopilot;
+  $("#pilotSwitch").classList.toggle("on", on);
+  $("#pilotSwitch").textContent = on ? "⏸ PARAR" : "▶ PONER EN MARCHA";
+  $("#pilotDot").classList.toggle("on", on);
+  $("#pilotText").textContent = on ? "En marcha · publica solo" : "Parado";
+  $("#pilotText").style.color = on ? "var(--ok)" : "var(--err)";
+  $("#hero").classList.toggle("hidden", on);
 
   const next = s.stats.nextAutoAt;
-  $("#sNext").textContent = next ? when(next) : "Ninguno en cola";
-  $("#sNextRel").textContent = next ? (c.autopilot ? rel(next) : "no saldrá: bot parado") : "";
-  $("#sToday").textContent = s.stats.publishedToday;
-  $("#sTodayMax").textContent = "máximo " + c.maxPerDay + " automáticos/día";
-  $("#sSpent").textContent = eur(s.stats.spentMonth);
-  $("#sBudget").textContent = "de " + eur(c.monthlyBudgetEur) + " de presupuesto";
-  $("#sGen").textContent = s.stats.queued24h + " tweets";
-  $("#sGenRel").textContent = c.autopilot
-    ? (s.stats.queued24h < c.maxPerDay ? "la IA está preparando más (objetivo " + c.maxPerDay + ")" : "cola llena")
-    : "pon en marcha para que se rellene";
+  $("#sNext").textContent = next ? when(next) : "Ninguno";
+  $("#sNextRel").textContent = next ? (on ? rel(next) : "no saldrá: bot parado") : "no hay automáticos";
+  $("#sToday").textContent = s.stats.publishedToday + " de " + c.maxPerDay;
+  $("#sTodayBar").style.width = Math.min(100, 100 * s.stats.publishedToday / Math.max(1, c.maxPerDay)) + "%";
+  $("#sQueued").textContent = s.stats.queued24h + " de " + c.maxPerDay;
+  $("#sQueuedRel").textContent = on
+    ? (s.stats.queued24h < c.maxPerDay ? "la IA está preparando el resto" : "plan completo")
+    : "se rellena al poner en marcha";
+  $("#sSpent").textContent = eur(s.stats.spentMonth) + " de " + eur(c.monthlyBudgetEur);
+  $("#sSpentBar").style.width = Math.min(100, 100 * s.stats.spentMonth / Math.max(0.01, c.monthlyBudgetEur)) + "%";
 
   renderAlerts();
 
@@ -494,14 +547,16 @@ function render() {
   $("#cAuto").textContent = s.auto.length;
   $("#cManual").textContent = s.manual.length;
 
-  paintList("#listAuto", s.auto, "Sin tweets automáticos. Pulsa «✨ Generar tweets» o pasa alguno desde Manuales.");
-  paintList("#listManual", s.manual, "Sin tweets manuales pendientes.");
+  paintList("#listAuto", s.auto, "No hay automáticos. Pon el bot en marcha y la IA preparará los del plan del día, o pulsa «✨ Generar ahora».");
+  paintList("#listManual", s.manual, "Sin manuales pendientes.");
   paintList("#listPublished", s.published, "Todavía no se ha publicado nada.");
   paintList("#listErrors", s.errors, "Sin errores. 👌");
 
   $("#logList").innerHTML = s.log.length ? s.log.map(l =>
     `<div><time>${esc(when(l.created_at))}</time><span class="${esc(l.level)}">${esc(l.message)}</span></div>`
   ).join("") : '<p class="empty">Sin actividad todavía.</p>';
+
+  if (TAB === "plan") renderPlan();
 }
 
 function renderAlerts() {
@@ -509,20 +564,27 @@ function renderAlerts() {
   if (s.secrets.x.length) out.push(["err", "secrets", "Faltan secretos de X en Cloudflare: " + s.secrets.x.join(", ")]);
   if (!s.secrets.ai) out.push(["err", "ai", "Falta el binding de Workers AI (AI)."]);
   const tick = s.clock?.lastTick;
-  if (s.clock?.missing) out.push(["err", "clock", "Falta el reloj del piloto (Durable Object TICKER): los automáticos no saldrán."]);
-  else if (s.config.autopilot && tick && Date.now() - tick > 5 * 60000) out.push(["err", "clock", "El reloj del piloto no da señales desde " + rel(new Date(tick).toISOString()) + ". Recarga la página para reactivarlo."]);
-  const lastErr = s.log.find(l => l.level === "error" && Date.now() - Date.parse(l.created_at) < 6 * 3600000);
+  if (s.clock?.missing) out.push(["err", "clock", "Falta el reloj del bot (Durable Object TICKER): los automáticos no saldrán."]);
+  else if (s.config.autopilot && tick && Date.now() - tick > 5 * 60000) out.push(["err", "clock", "El reloj del bot no da señales desde " + rel(new Date(tick).toISOString()) + ". Recarga la página para reactivarlo."]);
+
+  const wrong = [...s.auto, ...s.manual, ...s.errors].filter(wrongLang).length;
+  if (wrong) {
+    const lang = s.config.language === "es" ? "español" : "inglés";
+    out.push(["warn", "lang", `Hay ${wrong} tweets pendientes que no están en ${lang}.`, `<button class="btn sm" id="btnRewriteAll">${rewriting ? "Rehaciendo…" : "♻️ Rehacerlos en " + lang}</button>`]);
+  }
+
+  const lastErr = s.log.find(l => l.level === "error" && Date.now() - Date.parse(l.created_at) < 3 * 3600000);
   if (lastErr) out.push(["err", "e" + lastErr.id, "Último error (" + rel(lastErr.created_at) + "): " + lastErr.message]);
-  $("#alerts").innerHTML = out.filter(a => !dismissed.has(a[1])).map(([k, id, m]) =>
-    `<div class="alert ${k}"><span>${esc(m)}</span><button class="x" data-dismiss="${esc(id)}" aria-label="Cerrar">×</button></div>`
+
+  $("#alerts").innerHTML = out.filter(a => !dismissed.has(a[1])).map(([k, id, m, extra]) =>
+    `<div class="alert ${k}"><span class="grow">${esc(m)}</span>${extra || ""}<button class="x" data-dismiss="${esc(id)}" aria-label="Cerrar">×</button></div>`
   ).join("");
 }
 
 function paintList(sel, items, emptyText) {
   const el = $(sel);
-  if (!items.length) { el.innerHTML = `<p class="empty">${esc(emptyText)}</p>`; return; }
-  // Si hay un tweet en edición en esta lista, solo actualizamos los demás.
   if ([...editing].some(id => el.querySelector(`[data-id="${id}"]`))) return;
+  if (!items.length) { el.innerHTML = `<p class="empty">${esc(emptyText)}</p>`; return; }
   if (sel === "#listAuto") {
     const limit = Date.now() + 86400000;
     const soon = items.filter(t => !t.scheduled_at || Date.parse(t.scheduled_at) <= limit);
@@ -536,61 +598,138 @@ function paintList(sel, items, emptyText) {
 
 function card(t) {
   const n = xLen(t.text);
-  let badge = "", whenTxt = "";
-  if (t.status === "sending") badge = '<span class="badge send">Enviando…</span>';
-  else if (t.status === "published") { badge = '<span class="badge ok">Publicado</span>'; whenTxt = `<span class="when">${esc(when(t.published_at))}</span>`; }
-  else if (t.status === "error") badge = `<span class="badge err">Error</span><span class="badge ${t.mode}">${t.mode === "auto" ? "Auto" : "Manual"}</span>`;
-  else if (t.mode === "auto") {
-    badge = '<span class="badge auto">Auto</span>';
-    const late = t.scheduled_at && Date.parse(t.scheduled_at) < Date.now();
-    whenTxt = t.scheduled_at ? `<span class="when ${late ? "late" : ""}">🕒 ${esc(when(t.scheduled_at))}</span><span>${esc(late ? (STATE.config.autopilot ? "sale en breve" : "atrasado · bot parado") : rel(t.scheduled_at))}</span>` : "<span>sin hora</span>";
-  } else badge = '<span class="badge manual">Manual</span><span>espera tu OK</span>';
+  const tp = topicOf(t);
+  let time = "", status = "";
 
-  const link = t.has_link ? "<span>🔗 con enlace</span>" : "";
+  if (t.status === "published") {
+    time = `<div class="tw-time"><b>${esc(hhmm(t.published_at))}</b><small>${esc(dayLabel(new Date(t.published_at)))}</small></div>`;
+    status = '<span class="chip ok">Publicado</span>';
+  } else if (t.status === "sending") {
+    time = `<div class="tw-time"><b>…</b><small>enviando</small></div>`;
+  } else if (t.status === "error") {
+    time = `<div class="tw-time"><b>⚠️</b><small>error</small></div>`;
+    status = `<span class="chip ${t.mode}">${t.mode === "auto" ? "Automático" : "Manual"}</span>`;
+  } else if (t.mode === "auto") {
+    const late = t.scheduled_at && Date.parse(t.scheduled_at) < Date.now();
+    time = t.scheduled_at
+      ? `<div class="tw-time ${late ? "late" : ""}"><b>${esc(hhmm(t.scheduled_at))}</b><small>${esc(dayLabel(new Date(t.scheduled_at)))} · ${esc(late ? (STATE.config.autopilot ? "sale ya" : "atrasado") : rel(t.scheduled_at))}</small></div>`
+      : `<div class="tw-time"><b>—</b><small>buscando hueco</small></div>`;
+  } else {
+    time = `<div class="tw-time"><b>✋</b><small>espera tu OK</small></div>`;
+  }
+
+  const chips = [
+    `<span class="chip">${tp.emoji} ${esc(tp.label)}</span>`,
+    t.has_link ? '<span class="chip link">🔗 con enlace</span>' : "",
+    wrongLang(t) && t.status !== "published" ? `<span class="chip lang">${STATE.config.language === "es" ? "no está en español" : "no está en inglés"}</span>` : "",
+    status
+  ].join("");
+
   const src = t.article_url
     ? `<div class="tw-src">Noticia: <a href="${esc(t.article_url)}" target="_blank" rel="noopener">${esc(t.article_title || t.article_url)}</a></div>`
     : `<div class="tw-src">${esc(t.article_title || "")}</div>`;
 
   const B = (a, label, cls = "") => `<button class="btn sm ${cls}" data-act="${a}" data-id="${t.id}">${label}</button>`;
-  let actions = [];
+  const actions = [];
   if (t.status === "pending" || t.status === "error") {
-    actions.push(B("publish", "🚀 Publicar ahora", "primary"));
     actions.push(B("edit", "✏️ Editar"));
-    if (t.mode === "auto") { actions.push(B("toManual", "✋ Pasar a manual")); actions.push(B("time", "🕒 Cambiar hora")); }
-    else { actions.push(B("toAuto", "🤖 Pasar a automático")); actions.push(B("time", "🕒 Programar a una hora")); }
+    if (t.article_url) actions.push(B("rewrite", "♻️ Rehacer con IA"));
+    if (t.mode === "auto") { actions.push(B("time", "🕒 Hora")); actions.push(B("toManual", "✋ A manual")); }
+    else { actions.push(B("toAuto", "🤖 A automático")); actions.push(B("time", "🕒 Programar")); }
     if (t.status === "error") actions.push(B("retry", "↻ Volver a la cola"));
+    actions.push(B("publish", "🚀 Publicar ya", "primary"));
     actions.push(B("delete", "🗑", "danger"));
-  } else if (t.status === "published") {
-    if (t.x_post_id) actions.push(`<a class="btn sm" href="https://x.com/i/web/status/${esc(t.x_post_id)}" target="_blank" rel="noopener">Ver en X ↗</a>`);
+  } else if (t.status === "published" && t.x_post_id) {
+    actions.push(`<a class="btn sm" href="https://x.com/i/web/status/${esc(t.x_post_id)}" target="_blank" rel="noopener">Ver en X ↗</a>`);
   }
 
   return `<article class="tw ${t.status === "error" ? "err" : ""}" data-id="${t.id}">
-    <div class="tw-top">${badge}${whenTxt}${link}<span class="chars ${n > 280 ? "over" : ""}">${n}/280</span></div>
-    <div class="tw-text">${linkify(t.text)}</div>
-    ${src}
-    ${t.error ? `<div class="tw-error">${esc(t.error)}</div>` : ""}
-    <div class="tw-actions">${actions.join("")}</div>
-    <div class="slot"></div>
+    ${time}
+    <div class="tw-body">
+      <div class="tw-top">${chips}<span class="chars ${n > 280 ? "over" : ""}">${n}/280</span></div>
+      <div class="tw-text">${linkify(t.text)}</div>
+      ${src}
+      ${t.error ? `<div class="tw-error">${esc(t.error)}</div>` : ""}
+      <div class="tw-actions">${actions.join("")}</div>
+      <div class="slot"></div>
+    </div>
   </article>`;
 }
 
-// ---------- Acciones de los tweets ----------
+// ---------- Plan del día ----------
+function fillPlan() {
+  if (!STATE) return;
+  PLAN = { ...STATE.config.topicPlan };
+  $("#linkEvery").value = STATE.config.linkEvery;
+  setSeg("#langSeg", STATE.config.language);
+  setSeg("#modeSeg", STATE.config.newTweetsMode);
+  renderPlan();
+}
+
+function renderPlan() {
+  if (!PLAN) return;
+  const s = STATE, c = s.config;
+  $("#planList").innerHTML = Object.entries(s.topics).map(([key, tp]) => `
+    <div class="topic">
+      <div class="em">${tp.emoji}</div>
+      <div class="name"><b>${esc(tp.label)}</b><small>${s.prepared[key] || 0} preparados ahora</small></div>
+      <div class="stepper">
+        <button type="button" data-step="-1" data-topic="${key}" aria-label="Menos">−</button>
+        <output>${PLAN[key] || 0}</output>
+        <button type="button" data-step="1" data-topic="${key}" aria-label="Más">+</button>
+      </div>
+    </div>`).join("");
+
+  const total = Object.values(PLAN).reduce((a, b) => a + (Number(b) || 0), 0);
+  const every = Number($("#linkEvery").value) || 0;
+  const links = every ? Math.floor(total / every) : 0;
+  const perDay = links * c.costPerLinkTweetEur + (total - links) * c.costPerTweetEur;
+  const perMonth = perDay * 30;
+  const over = perMonth > c.monthlyBudgetEur;
+  $("#planTotal").innerHTML = `
+    <div><b>${total}</b> <span>tweets al día</span></div>
+    <div><b>${links}</b> <span>con enlace</span></div>
+    <div><b>${eur(perDay)}</b> <span>al día ≈ ${eur(perMonth)} al mes</span></div>
+    ${over ? `<div class="warn">⚠️ Pasa de tu presupuesto (${eur(c.monthlyBudgetEur)}/mes): se parará al llegar al límite.</div>` : ""}`;
+}
+
+$("#planList").addEventListener("click", e => {
+  const b = e.target.closest("button[data-step]");
+  if (!b) return;
+  const k = b.dataset.topic;
+  PLAN[k] = Math.max(0, Math.min(50, (Number(PLAN[k]) || 0) + Number(b.dataset.step)));
+  renderPlan();
+});
+$("#linkEvery").addEventListener("input", renderPlan);
+$("#btnSavePlan").addEventListener("click", e => act(e.target, async () => {
+  const r = await api("/api/config", {
+    topicPlan: PLAN,
+    linkEvery: Number($("#linkEvery").value),
+    language: segValue("#langSeg"),
+    newTweetsMode: segValue("#modeSeg")
+  });
+  await api("/api/reschedule", {});
+  return r;
+}, "Plan del día guardado"));
+
+// ---------- Acciones de cada tweet ----------
 document.addEventListener("click", async e => {
   const dismiss = e.target.closest("[data-dismiss]");
   if (dismiss) { dismissed.add(dismiss.dataset.dismiss); renderAlerts(); return; }
+  if (e.target.closest("#btnRewriteAll")) return rewriteAll();
 
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const id = Number(btn.dataset.id);
   const art = btn.closest(".tw");
-  const all = [...STATE.auto, ...STATE.manual, ...STATE.errors, ...STATE.published];
-  const t = all.find(x => x.id === id);
+  const t = [...STATE.auto, ...STATE.manual, ...STATE.errors, ...STATE.published].find(x => x.id === id);
   const a = btn.dataset.act;
 
   if (a === "publish") {
     if (!confirm("¿Publicar este tweet en X ahora mismo?\n\n" + t.text)) return;
     return act(btn, () => api(`/api/tweets/${id}/publish`, {}), "Publicado en X ✅");
   }
+  if (a === "rewrite") return act(btn, () => api(`/api/tweets/${id}/rewrite`, {}), "Tweet rehecho");
   if (a === "toManual") return act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "manual" }), "Pasado a manual");
   if (a === "toAuto") return act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "auto" }), "Pasado a automático");
   if (a === "retry") return act(btn, () => api(`/api/tweets/${id}/retry`, {}), "Vuelve a estar en la cola");
@@ -598,7 +737,6 @@ document.addEventListener("click", async e => {
     if (!confirm("¿Borrar este tweet?")) return;
     return act(btn, () => api(`/api/tweets/${id}/delete`, {}), "Borrado");
   }
-
   if (a === "edit") {
     editing.add(id);
     art.querySelector(".tw-text").classList.add("hidden");
@@ -614,12 +752,10 @@ document.addEventListener("click", async e => {
   }
   if (a === "cancel") { editing.delete(id); return render(); }
   if (a === "save") {
-    const text = art.querySelector("textarea").value;
-    const r = await act(btn, () => api(`/api/tweets/${id}/edit`, { text }), "Guardado");
+    const r = await act(btn, () => api(`/api/tweets/${id}/edit`, { text: art.querySelector("textarea").value }), "Guardado");
     if (r) { editing.delete(id); render(); }
     return;
   }
-
   if (a === "time") {
     editing.add(id);
     art.querySelector(".tw-actions").classList.add("hidden");
@@ -632,15 +768,35 @@ document.addEventListener("click", async e => {
   if (a === "saveTime") {
     const v = art.querySelector('input[type="datetime-local"]').value;
     if (!v) return toast("Elige fecha y hora.", "err");
-    const r = await act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "auto", scheduledAt: new Date(v).toISOString() }), "Programado para " + when(new Date(v).toISOString()));
+    const iso = new Date(v).toISOString();
+    const r = await act(btn, () => api(`/api/tweets/${id}/mode`, { mode: "auto", scheduledAt: iso }), "Programado para " + when(iso));
     if (r) { editing.delete(id); render(); }
   }
 });
 
-// ---------- Piloto ----------
+async function rewriteAll() {
+  if (rewriting) return;
+  rewriting = true; renderAlerts();
+  try {
+    let total = 0, r;
+    do {
+      r = await api("/api/rewrite-pending", {});
+      total += r.done;
+      if (r.remaining) toast(`Rehechos ${total}… quedan ${r.remaining}`);
+      await refresh();
+    } while (r.remaining && r.done);
+    toast(`Listo: ${total} tweets rehechos`, "ok");
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    rewriting = false; renderAlerts();
+  }
+}
+
+// ---------- Marcha / parada ----------
 $("#pilotSwitch").addEventListener("click", async () => {
   const on = !STATE.config.autopilot;
-  await act($("#pilotSwitch"), () => api("/api/autopilot", { on }), on ? "▶ En marcha: publica solo y prepara tweets nuevos" : "⏸ Bot parado: no saldrá nada solo");
+  await act($("#pilotSwitch"), () => api("/api/autopilot", { on }), on ? "▶ En marcha: publica solo y prepara tweets según tu plan" : "⏸ Bot parado: no saldrá nada solo");
 });
 $("#heroRun").addEventListener("click", () => $("#pilotSwitch").click());
 
@@ -652,9 +808,10 @@ $("#tabs").addEventListener("click", e => {
   $$("#tabs button").forEach(x => x.classList.toggle("active", x === b));
   $$("[data-view]").forEach(v => v.classList.toggle("hidden", v.dataset.view !== TAB));
   if (TAB === "settings") fillSettings();
+  if (TAB === "plan") fillPlan();
 });
 
-// ---------- Segmented controls ----------
+// ---------- Selectores ----------
 function seg(sel, onChange) {
   $(sel).addEventListener("click", e => {
     const b = e.target.closest("button[data-mode]");
@@ -663,14 +820,15 @@ function seg(sel, onChange) {
     onChange?.(b.dataset.mode);
   });
 }
-const segValue = sel => $(sel + " button.on")?.dataset.mode || "auto";
+const segValue = sel => $(sel + " button.on")?.dataset.mode;
 const setSeg = (sel, mode) => $$(sel + " button").forEach(x => x.classList.toggle("on", x.dataset.mode === mode));
-seg("#modeSeg"); seg("#genSeg");
+seg("#langSeg"); seg("#modeSeg"); seg("#genSeg");
 seg("#composeSeg", m => $("#composeWhenWrap").classList.toggle("hidden", m !== "auto"));
 
 // ---------- Generar ----------
 $("#btnGenerate").addEventListener("click", () => {
-  $("#genCount").value = 4;
+  $("#genTopic").innerHTML = '<option value="">Cualquier tema (las más recientes)</option>' +
+    Object.entries(STATE.topics).map(([k, t]) => `<option value="${k}">${t.emoji} ${esc(t.label)}</option>`).join("");
   setSeg("#genSeg", STATE.config.newTweetsMode);
   $("#dlgGenerate").showModal();
 });
@@ -679,8 +837,9 @@ $("#genForm").addEventListener("submit", e => {
   e.preventDefault();
   $("#dlgGenerate").close();
   toast("Generando tweets con la IA… puede tardar un minuto.");
-  act($("#btnGenerate"), () => api("/api/generate", { count: Number($("#genCount").value), mode: segValue("#genSeg") }),
-    r => r.created.length + " tweets nuevos listos para leer");
+  act($("#btnGenerate"), () => api("/api/generate", {
+    count: Number($("#genCount").value), mode: segValue("#genSeg"), topic: $("#genTopic").value || undefined
+  }), r => r.created.length + " tweets nuevos listos para revisar");
 });
 
 // ---------- Escribir ----------
@@ -710,13 +869,11 @@ $("#composeForm").addEventListener("submit", e => {
 // ---------- Ajustes ----------
 function fillSettings() {
   if (!STATE) return;
-  const c = STATE.config, f = $("#settingsForm");
-  for (const el of f.elements) if (el.name && c[el.name] !== undefined) el.value = c[el.name];
-  setSeg("#modeSeg", c.newTweetsMode);
+  for (const el of $("#settingsForm").elements) if (el.name && STATE.config[el.name] !== undefined) el.value = STATE.config[el.name];
 }
 $("#settingsForm").addEventListener("submit", e => {
   e.preventDefault();
-  const body = { newTweetsMode: segValue("#modeSeg") };
+  const body = {};
   for (const el of e.target.elements) if (el.name) body[el.name] = el.type === "number" ? Number(el.value) : el.value;
   act(e.submitter, async () => {
     const r = await api("/api/config", body);
@@ -725,7 +882,7 @@ $("#settingsForm").addEventListener("submit", e => {
   }, "Ajustes guardados y horarios recalculados");
 });
 $("#btnTestX").addEventListener("click", e => act(e.target, () => api("/api/test-x", {}), r => "X conectado como @" + r.username + " ✅"));
-$("#btnTestAI").addEventListener("click", e => act(e.target, () => api("/api/test-ai", {}), r => "IA responde: " + r.text));
+$("#btnTestAI").addEventListener("click", e => act(e.target, () => api("/api/test-ai", {}), r => "La IA responde: " + r.text));
 
 // ---------- Arranque ----------
 setInterval(() => { if (TOKEN && !$("#app").classList.contains("hidden")) refresh().catch(() => {}); }, 30000);
