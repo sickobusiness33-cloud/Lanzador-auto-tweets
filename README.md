@@ -26,6 +26,12 @@ Cada push a `main` lo despliega Cloudflare solo (Workers Builds, `npx wrangler d
 
 Bindings: `DB` (D1 `void-autopilot-db`) y `AI` (Workers AI). Secretos en Cloudflare: `ADMIN_TOKEN`, `X_CONSUMER_KEY`, `X_CONSUMER_SECRET`, `X_ACCESS_TOKEN` y `X_ACCESS_TOKEN_SECRET`.
 
+### Cuenta de X
+
+El bot publica en la cuenta conectada desde **Ajustes → Conectar mi cuenta de X** (OAuth 1.0a de 3 pasos). Las claves de esa cuenta se guardan en D1 (`tw_config`, clave `x_account`). Si no hay ninguna conectada, usa los secretos `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET`.
+
+Antes de conectar, en developer.x.com → tu app → *User authentication settings*: permisos **Read and write**, tipo **Web App, Automated App or Bot** y Callback URI `https://void-autopilot.tureganovictor79.workers.dev/x/callback`.
+
 Si X responde que no hay permiso de escritura: en developer.x.com → tu app → *User authentication settings*, elige **Read and write**. Después **regenera** el Access Token y el Access Token Secret y cámbialos en Cloudflare.
 
 ## Código

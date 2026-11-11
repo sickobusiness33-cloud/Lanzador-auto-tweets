@@ -305,6 +305,27 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
 
     <!-- Ajustes -->
     <section data-view="settings" class="hidden">
+      <div class="card" style="margin-bottom:14px">
+        <h3>🐦 Cuenta de X donde publica el bot</h3>
+        <p id="xAccountText">—</p>
+        <div class="row" style="margin-bottom:12px">
+          <button type="button" class="btn primary" id="btnXConnect">🔗 Conectar mi cuenta de X</button>
+          <button type="button" class="btn" id="btnTestX">Comprobar conexión</button>
+          <button type="button" class="btn danger hidden" id="btnXDisconnect">Desconectar</button>
+        </div>
+        <details>
+          <summary style="cursor:pointer;color:var(--muted)">Antes de conectar por primera vez (una sola vez, en developer.x.com)</summary>
+          <ol style="color:var(--muted);font-size:14px;line-height:1.8;margin:10px 0 0;padding-left:20px">
+            <li>Entra en <b>developer.x.com</b> → tu app → <b>User authentication settings</b> → <b>Edit</b>.</li>
+            <li><b>App permissions</b>: <b>Read and write</b>.</li>
+            <li><b>Type of App</b>: <b>Web App, Automated App or Bot</b>.</li>
+            <li><b>Callback URI / Redirect URL</b>: <code id="xCallback" style="color:var(--text);word-break:break-all"></code></li>
+            <li><b>Website URL</b>: https://noticierovoid.com → <b>Save</b>.</li>
+            <li>Vuelve aquí y pulsa <b>Conectar mi cuenta de X</b>. En X, entra con la cuenta donde quieres que salgan los tweets y pulsa <b>Authorize app</b>.</li>
+          </ol>
+        </details>
+      </div>
+
       <form id="settingsForm" class="grid2">
         <div class="card">
           <h3>🕒 Cuándo se publica</h3>
@@ -333,7 +354,6 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
           <h3>🧪 Comprobaciones</h3>
           <p>Prueba que todo conecta.</p>
           <div class="row">
-            <button type="button" class="btn" id="btnTestX">Probar conexión con X</button>
             <button type="button" class="btn" id="btnTestAI">Probar IA</button>
             <button type="button" class="btn ghost" id="btnLogout">Cerrar sesión</button>
           </div>
@@ -517,7 +537,15 @@ async function refresh() {
 function render() {
   const s = STATE, c = s.config;
 
-  $("#account").textContent = c.xUsername ? "@" + c.xUsername : "Noticiero VOID";
+  $("#account").textContent = c.xUsername ? "Publica en @" + c.xUsername : "Cuenta de X sin comprobar";
+  const xa = s.xAccount || {};
+  $("#xAccountText").innerHTML = xa.source === "panel"
+    ? `Publicando en <b>@${esc(xa.username)}</b> (conectada desde este panel ${esc(rel(xa.connectedAt))}).`
+    : xa.source === "cloudflare"
+      ? `Publicando con las claves guardadas en Cloudflare${c.xUsername ? ` (cuenta <b>@${esc(c.xUsername)}</b>)` : ""}. Para publicar en otra cuenta, pulsa <b>Conectar mi cuenta de X</b>.`
+      : "No hay ninguna cuenta de X. Pulsa <b>Conectar mi cuenta de X</b>.";
+  $("#btnXDisconnect").classList.toggle("hidden", xa.source !== "panel");
+  $("#xCallback").textContent = location.origin + "/x/callback";
   const on = c.autopilot;
   $("#pilotSwitch").classList.toggle("on", on);
   $("#pilotSwitch").textContent = on ? "⏸ PARAR" : "▶ PONER EN MARCHA";
@@ -881,10 +909,33 @@ $("#settingsForm").addEventListener("submit", e => {
     return r;
   }, "Ajustes guardados y horarios recalculados");
 });
+$("#btnXConnect").addEventListener("click", e => act(e.target, async () => {
+  const r = await api("/api/x/connect", {});
+  location.href = r.url;   // X pide entrar y autorizar; luego vuelve a /x/callback
+  return r;
+}));
+$("#btnXDisconnect").addEventListener("click", e => {
+  if (!confirm("¿Desconectar esta cuenta de X? El bot volverá a usar las claves de Cloudflare.")) return;
+  act(e.target, () => api("/api/x/disconnect", {}), "Cuenta desconectada");
+});
 $("#btnTestX").addEventListener("click", e => act(e.target, () => api("/api/test-x", {}), r => "X conectado como @" + r.username + " ✅"));
 $("#btnTestAI").addEventListener("click", e => act(e.target, () => api("/api/test-ai", {}), r => "La IA responde: " + r.text));
 
 // ---------- Arranque ----------
+// Vuelta desde X tras conectar la cuenta.
+(() => {
+  const x = new URLSearchParams(location.search).get("x");
+  if (x === null) return;
+  history.replaceState(null, "", "/");
+  if (x === "ok") {
+    toast("✅ Cuenta de X conectada: el bot publicará en ella", "ok");
+    TAB = "settings";
+    setTimeout(() => $('#tabs button[data-tab="settings"]')?.click(), 300);
+  } else {
+    toast("No se pudo conectar la cuenta de X: " + x, "err");
+  }
+})();
+
 setInterval(() => { if (TOKEN && !$("#app").classList.contains("hidden")) refresh().catch(() => {}); }, 30000);
 start();
 </script>

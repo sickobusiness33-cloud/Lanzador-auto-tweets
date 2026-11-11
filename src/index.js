@@ -5,7 +5,7 @@
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "9.2.0";
+const VERSION = "9.3.0";
 const TICK_MS = 60000;
 
 const DEFAULT_CONFIG = {
@@ -82,6 +82,20 @@ export default {
 
     if (url.pathname === "/api/health") {
       return json({ ok: true, version: VERSION, time: new Date().toISOString() });
+    }
+
+    // Vuelta desde X después de autorizar la app (paso 3 del OAuth). Es pública, pero solo
+    // acepta un oauth_token que este mismo panel pidió hace menos de 15 minutos.
+    if (url.pathname === "/x/callback") {
+      let result = "ok";
+      try {
+        await ensureSchema(env);
+        await finishXConnect(env, url);
+      } catch (error) {
+        console.error("x callback", error);
+        result = encodeURIComponent(error.message || String(error));
+      }
+      return Response.redirect(new URL(`/?x=${result}`, url).toString(), 302);
     }
 
     if (!url.pathname.startsWith("/api/")) return json({ ok: false, error: "No encontrado." }, 404);
@@ -217,6 +231,27 @@ async function route(request, url, env) {
     return json({ ok: true, count: n });
   }
 
+  // Paso 1 del OAuth: pide a X un token temporal y devuelve la página donde el usuario autoriza.
+  if (path === "/api/x/connect") {
+    if (!env.X_CONSUMER_KEY || !env.X_CONSUMER_SECRET) {
+      throw new UserError("Faltan X_CONSUMER_KEY y X_CONSUMER_SECRET (las claves de la app de X) en Cloudflare.");
+    }
+    const callback = new URL("/x/callback", url).toString();
+    const body = await xOAuthStep(env, "https://api.x.com/oauth/request_token", { oauth_callback: callback }, "");
+    if (body.get("oauth_callback_confirmed") !== "true") throw new UserError("X no ha aceptado la dirección de vuelta.");
+    const token = body.get("oauth_token");
+    await env.DB.prepare("DELETE FROM tw_config WHERE key LIKE 'x_request_%'").run(); // solo una conexión pendiente
+    await setKey(env, `x_request_${token}`, JSON.stringify({ secret: body.get("oauth_token_secret"), at: Date.now() }));
+    return json({ ok: true, url: `https://api.x.com/oauth/authorize?oauth_token=${encodeURIComponent(token)}`, callback });
+  }
+
+  if (path === "/api/x/disconnect") {
+    await env.DB.prepare("DELETE FROM tw_config WHERE key='x_account'").run();
+    await saveConfig(env, { xUsername: null });
+    await log(env, "warn", "Cuenta de X del panel desconectada: se vuelven a usar las claves de Cloudflare.");
+    return json({ ok: true });
+  }
+
   if (path === "/api/test-x") {
     const me = await xRequest(env, "GET", "https://api.x.com/2/users/me");
     const username = me?.data?.username || null;
@@ -309,8 +344,9 @@ async function getState(env) {
     config: cfg,
     stats,
     clock,
+    xAccount: await xAccountInfo(env),
     secrets: {
-      x: ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"].filter(k => !env[k]),
+      x: (await getXAccount(env) ? ["X_CONSUMER_KEY", "X_CONSUMER_SECRET"] : ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"]).filter(k => !env[k]),
       ai: Boolean(env.AI)
     },
     topics: Object.fromEntries(Object.entries(TOPICS).map(([k, t]) => [k, { label: t.label, emoji: t.emoji }])),
@@ -482,14 +518,34 @@ async function publishTweet(env, tweet, { manual }) {
   }
 }
 
+// Cuenta en la que publica el bot: la conectada desde el panel ("Conectar mi cuenta de X")
+// o, si no hay ninguna, la de los secretos X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET.
+async function getXAccount(env) {
+  try {
+    const stored = JSON.parse(await getKey(env, "x_account") || "null");
+    if (stored?.token && stored?.secret) return stored;
+  } catch {}
+  return null;
+}
+
+async function xAccountInfo(env) {
+  const stored = await getXAccount(env);
+  if (stored) return { source: "panel", username: stored.username || null, connectedAt: stored.connectedAt || null };
+  return { source: env.X_ACCESS_TOKEN ? "cloudflare" : "none", username: null };
+}
+
 async function xRequest(env, method, endpoint, payload) {
-  const missing = ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"].filter(k => !env[k]);
+  const stored = await getXAccount(env);
+  const required = stored ? ["X_CONSUMER_KEY", "X_CONSUMER_SECRET"] : ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"];
+  const missing = required.filter(k => !env[k]);
   if (missing.length) throw new UserError(`Faltan secretos de X en Cloudflare: ${missing.join(", ")}.`);
+  const token = stored ? stored.token : env.X_ACCESS_TOKEN;
+  const tokenSecret = stored ? stored.secret : env.X_ACCESS_TOKEN_SECRET;
 
   const response = await fetch(endpoint, {
     method,
     headers: {
-      authorization: await oauthHeader(env, method, endpoint),
+      authorization: await oauthHeader(env, method, endpoint, { oauth_token: token }, tokenSecret),
       ...(payload ? { "content-type": "application/json" } : {})
     },
     body: payload ? JSON.stringify(payload) : undefined,
@@ -519,7 +575,8 @@ function explainXError(status, body) {
   return `X respondió ${status}: ${raw}`;
 }
 
-async function oauthHeader(env, method, endpoint) {
+// Firma OAuth 1.0a (HMAC-SHA1). `extra` añade parámetros oauth_* (token, callback, verifier).
+async function oauthHeader(env, method, endpoint, extra, tokenSecret) {
   const enc = value => encodeURIComponent(String(value))
     .replace(/[!'()*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 
@@ -528,14 +585,14 @@ async function oauthHeader(env, method, endpoint) {
     oauth_nonce: crypto.randomUUID().replace(/-/g, ""),
     oauth_signature_method: "HMAC-SHA1",
     oauth_timestamp: String(Math.floor(Date.now() / 1000)),
-    oauth_token: env.X_ACCESS_TOKEN,
-    oauth_version: "1.0"
+    oauth_version: "1.0",
+    ...extra
   };
 
   // El cuerpo JSON no entra en la firma; solo los parámetros oauth (el endpoint no lleva query).
   const params = Object.keys(oauth).sort().map(k => `${enc(k)}=${enc(oauth[k])}`).join("&");
   const base = [method.toUpperCase(), enc(endpoint), enc(params)].join("&");
-  const signingKey = `${enc(env.X_CONSUMER_SECRET)}&${enc(env.X_ACCESS_TOKEN_SECRET)}`;
+  const signingKey = `${enc(env.X_CONSUMER_SECRET)}&${enc(tokenSecret || "")}`;
 
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(signingKey), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
@@ -544,6 +601,50 @@ async function oauthHeader(env, method, endpoint) {
   oauth.oauth_signature = btoa(String.fromCharCode(...signature));
 
   return "OAuth " + Object.keys(oauth).sort().map(k => `${enc(k)}="${enc(oauth[k])}"`).join(", ");
+}
+
+// Pasos 1 y 3 del OAuth de 3 patas: X responde con un formulario (a=1&b=2), no con JSON.
+async function xOAuthStep(env, endpoint, extra, tokenSecret) {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { authorization: await oauthHeader(env, "POST", endpoint, extra, tokenSecret) },
+    signal: AbortSignal.timeout(20000)
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    if (response.status === 401 && /callback/i.test(text)) {
+      throw new UserError("X no reconoce la dirección de vuelta. Añade la «Callback URI» que sale en el panel en developer.x.com → tu app → User authentication settings.");
+    }
+    throw new UserError(explainXError(response.status, text));
+  }
+  return new URLSearchParams(text);
+}
+
+async function finishXConnect(env, url) {
+  if (url.searchParams.get("denied")) throw new Error("Has cancelado la autorización en X.");
+  const token = url.searchParams.get("oauth_token");
+  const verifier = url.searchParams.get("oauth_verifier");
+  if (!token || !verifier) throw new Error("X no ha devuelto los datos de la autorización.");
+
+  const key = `x_request_${token}`;
+  const pending = JSON.parse(await getKey(env, key) || "null");
+  await env.DB.prepare("DELETE FROM tw_config WHERE key=?").bind(key).run();
+  if (!pending || Date.now() - pending.at > 15 * 60000) throw new Error("La autorización ha caducado. Vuelve a pulsar «Conectar mi cuenta de X».");
+
+  const body = await xOAuthStep(env, "https://api.x.com/oauth/access_token",
+    { oauth_token: token, oauth_verifier: verifier }, pending.secret);
+  const account = {
+    token: body.get("oauth_token"),
+    secret: body.get("oauth_token_secret"),
+    userId: body.get("user_id"),
+    username: body.get("screen_name"),
+    connectedAt: new Date().toISOString()
+  };
+  if (!account.token || !account.secret) throw new Error("X no ha devuelto las claves de la cuenta.");
+
+  await setKey(env, "x_account", JSON.stringify(account));
+  await saveConfig(env, { xUsername: account.username });
+  await log(env, "ok", `Cuenta de X conectada: @${account.username}. El bot publicará en ella.`);
 }
 
 // ---------------------------------------------------------------------------
