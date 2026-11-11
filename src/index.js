@@ -1,40 +1,24 @@
-// Lanzador de tweets — VOID Autopilot
-// Lee el RSS de Noticiero VOID, redacta tweets con Workers AI y los publica en X.
+// Lanzador de tweets — dos bots en el mismo panel:
+//   · Noticiero VOID: lee el RSS de noticierovoid.com y tuitea noticias por temas.
+//   · StayLiquid: tuitea las buenas operaciones del bot de stayliquid.tech, noticias de memecoins
+//     y cripto de noticierovoid.com, y promoción de la app.
+// Cada bot tiene su cuenta de X, su app de X (sus créditos), su plan, su presupuesto y su interruptor.
 // Cada tweet es AUTOMÁTICO (sale solo a su hora) o MANUAL (espera a que pulses Publicar).
 
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "9.3.0";
+const VERSION = "10.0.0";
 const TICK_MS = 60000;
-
-const DEFAULT_CONFIG = {
-  autopilot: false,            // interruptor general: publica los automáticos y genera tweets nuevos
-  newTweetsMode: "auto",       // los tweets que genera el piloto: "auto" o "manual"
-  linkEvery: 4,                // 1 de cada N tweets lleva el enlace a la noticia en noticierovoid.com (0 = nunca)
-  language: "en",              // idioma de los tweets: "en" (inglés) o "es" (español)
-  // Plan del día: cuántos tweets de cada tema. La suma es el máximo diario.
-  topicPlan: { crypto: 4, stocks: 4, macro: 3, ai: 3, commodities: 1, finance: 1, politics: 0, other: 0 },
-  minMinutesBetween: 45,       // separación mínima entre tweets automáticos
-  windowStart: 8,              // hora local a partir de la que se publica
-  windowEnd: 23,               // hora local hasta la que se publica
-  maxPerDay: 16,               // se calcula solo: es la suma del plan del día
-  maxArticleAgeHours: 72,
-  monthlyBudgetEur: 16,
-  costPerTweetEur: 0.016,
-  costPerLinkTweetEur: 0.21,
-  rssUrl: "https://noticierovoid.com/rss.xml",
-  model: "@cf/zai-org/glm-4.7-flash",
-  timezone: "Europe/Madrid",
-  xUsername: null
-};
-
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
 
-// Temas. El RSS no trae categorías, así que cada noticia se clasifica por palabras clave
+// ---------------------------------------------------------------------------
+// Temas
+// El RSS no trae categorías, así que cada noticia se clasifica por palabras clave
 // (el titular pesa el triple que el resumen). En empate gana el que va antes en la lista.
-const TOPICS = {
-  crypto: { label: "Cripto", emoji: "🪙", words: ["bitcoin", "btc", "ethereum", "ether", "eth", "crypto", "cryptocurrency", "cryptocurrencies", "solana", "xrp", "ripple", "dogecoin", "stablecoin", "stablecoins", "tether", "usdt", "usdc", "blockchain", "defi", "nft", "nfts", "token", "tokens", "tokenized", "tokenization", "binance", "coinbase", "kraken", "web3", "altcoin", "altcoins", "memecoin", "satoshi", "digital asset", "digital assets", "wallet", "cz", "saylor", "microstrategy", "on-chain", "onchain"] },
+
+const NEWS_TOPICS = {
+  crypto: { label: "Cripto", emoji: "🪙", words: ["bitcoin", "btc", "ethereum", "ether", "eth", "crypto", "cryptocurrency", "cryptocurrencies", "solana", "xrp", "ripple", "dogecoin", "stablecoin", "stablecoins", "tether", "usdt", "usdc", "blockchain", "defi", "nft", "nfts", "token", "tokens", "tokenized", "tokenization", "binance", "coinbase", "kraken", "web3", "altcoin", "altcoins", "memecoin", "memecoins", "meme coin", "meme coins", "pump.fun", "satoshi", "digital asset", "digital assets", "wallet", "cz", "saylor", "microstrategy", "on-chain", "onchain"] },
   macro: { label: "Macro y bancos centrales", emoji: "🏦", words: ["fed", "federal reserve", "ecb", "boe", "boj", "central bank", "interest rate", "interest rates", "rate cut", "rate cuts", "rate hike", "inflation", "cpi", "pce", "gdp", "jobs report", "payrolls", "unemployment", "treasury", "treasuries", "yields", "recession", "tariff", "tariffs", "warsh", "powell", "lagarde", "economy", "monetary policy", "dollar", "forex", "currency", "currencies", "euro", "yen"] },
   commodities: { label: "Materias primas", emoji: "🛢️", words: ["oil", "crude", "brent", "wti", "opec", "gold", "silver", "copper", "natural gas", "lng", "coal", "lithium", "uranium", "wheat", "commodity", "commodities", "mine", "mining", "rare earths", "barrel"] },
   ai: { label: "IA y tecnología", emoji: "🤖", words: ["ai", "artificial intelligence", "openai", "chatgpt", "gpt", "nvidia", "gemini", "anthropic", "claude", "copilot", "llm", "chip", "chips", "semiconductor", "semiconductors", "cloud", "cybersecurity", "software", "agent", "agents", "agentic", "robot", "robotics", "quantum", "data center", "google", "alphabet", "microsoft", "apple", "meta", "amazon", "tesla", "github"] },
@@ -44,15 +28,18 @@ const TOPICS = {
   other: { label: "Otros", emoji: "📰", words: [] }
 };
 
-const TOPIC_PATTERNS = Object.fromEntries(Object.entries(TOPICS).map(([key, t]) => [
-  key,
-  t.words.map(w => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i"))
-]));
+// Palabras que convierten una noticia cripto en noticia de memecoins (para StayLiquid).
+const MEME_WORDS = ["memecoin", "memecoins", "meme coin", "meme coins", "meme", "memes", "pump.fun", "pumpfun", "pumpswap", "dogecoin", "doge", "shiba", "shib", "pepe", "bonk", "wif", "dogwifhat", "floki", "fartcoin", "popcat", "trump coin", "$trump", "moonshot", "degen"];
+
+const toPatterns = words => words.map(w =>
+  new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i"));
+const NEWS_PATTERNS = Object.fromEntries(Object.entries(NEWS_TOPICS).map(([k, t]) => [k, toPatterns(t.words)]));
+const MEME_PATTERNS = toPatterns(MEME_WORDS);
 
 export function classifyTopic(title, description = "") {
   let best = "other";
   let bestScore = 0;
-  for (const [key, patterns] of Object.entries(TOPIC_PATTERNS)) {
+  for (const [key, patterns] of Object.entries(NEWS_PATTERNS)) {
     let score = 0;
     for (const re of patterns) {
       if (re.test(title)) score += 3;
@@ -63,9 +50,80 @@ export function classifyTopic(title, description = "") {
   return best;
 }
 
-function planTotal(plan) {
-  return Object.keys(TOPICS).reduce((sum, key) => sum + (Number(plan?.[key]) || 0), 0);
+function isMemeNews(title, description = "") {
+  return MEME_PATTERNS.some(re => re.test(title) || re.test(description));
 }
+
+// ---------------------------------------------------------------------------
+// Bots
+
+const COMMON_DEFAULTS = {
+  autopilot: false,            // interruptor del bot: publica los automáticos y prepara tweets nuevos
+  newTweetsMode: "auto",       // los tweets que genera la IA: "auto" o "manual"
+  linkEvery: 4,                // 1 de cada N tweets lleva enlace (0 = nunca)
+  language: "en",              // idioma de los tweets: "en" o "es"
+  minMinutesBetween: 45,       // separación mínima entre tweets automáticos
+  windowStart: 8,              // hora local a partir de la que se publica
+  windowEnd: 23,               // hora local hasta la que se publica
+  maxArticleAgeHours: 72,
+  monthlyBudgetEur: 16,
+  costPerTweetEur: 0.016,
+  costPerLinkTweetEur: 0.21,
+  rssUrl: "https://noticierovoid.com/rss.xml",
+  model: "@cf/zai-org/glm-4.7-flash",
+  timezone: "Europe/Madrid",
+  xUsername: null
+};
+
+const BOTS = {
+  void: {
+    name: "Noticiero VOID",
+    emoji: "📰",
+    prefix: "",                       // claves en tw_config: "config", "x_account"... (como antes)
+    env: { key: "X_CONSUMER_KEY", secret: "X_CONSUMER_SECRET", token: "X_ACCESS_TOKEN", tokenSecret: "X_ACCESS_TOKEN_SECRET" },
+    topics: NEWS_TOPICS,
+    defaults: {
+      ...COMMON_DEFAULTS,
+      topicPlan: { crypto: 4, stocks: 4, macro: 3, ai: 3, commodities: 1, finance: 1, politics: 0, other: 0 }
+    }
+  },
+  stayliquid: {
+    name: "StayLiquid",
+    emoji: "💧",
+    prefix: "stayliquid:",
+    env: { key: "SL_X_CONSUMER_KEY", secret: "SL_X_CONSUMER_SECRET", token: "SL_X_ACCESS_TOKEN", tokenSecret: "SL_X_ACCESS_TOKEN_SECRET" },
+    topics: {
+      trades: { label: "Buenas operaciones del bot", emoji: "🏆" },
+      memecoins: { label: "Noticias de memecoins", emoji: "🐸" },
+      crypto: { label: "Noticias cripto", emoji: "🪙" },
+      promo: { label: "Promoción de StayLiquid", emoji: "📣" }
+    },
+    defaults: {
+      ...COMMON_DEFAULTS,
+      monthlyBudgetEur: 10,
+      minMinutesBetween: 60,
+      topicPlan: { trades: 3, memecoins: 2, crypto: 2, promo: 1 },
+      appUrl: "https://stayliquid.tech",
+      historyUrl: "https://stayliquid.tech/api/copy/history",
+      minTradePct: 15,           // solo tuitea operaciones cerradas con al menos este % de ganancia
+      minTradeSol: 0.2           // y con una compra de al menos esto (evita cierres sin coste real)
+    }
+  }
+};
+
+function botOf(id) {
+  return BOTS[id] ? id : "void";
+}
+
+const configKey = bot => `${BOTS[bot].prefix}config`;
+const botKey = (bot, key) => `${BOTS[bot].prefix}${key}`;
+
+function planTotal(bot, plan) {
+  return Object.keys(BOTS[bot].topics).reduce((sum, key) => sum + (Number(plan?.[key]) || 0), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Entrada
 
 export default {
   async fetch(request, env, ctx) {
@@ -88,14 +146,15 @@ export default {
     // acepta un oauth_token que este mismo panel pidió hace menos de 15 minutos.
     if (url.pathname === "/x/callback") {
       let result = "ok";
+      let bot = "void";
       try {
         await ensureSchema(env);
-        await finishXConnect(env, url);
+        bot = await finishXConnect(env, url);
       } catch (error) {
         console.error("x callback", error);
         result = encodeURIComponent(error.message || String(error));
       }
-      return Response.redirect(new URL(`/?x=${result}`, url).toString(), 302);
+      return Response.redirect(new URL(`/?x=${result}&bot=${bot}`, url).toString(), 302);
     }
 
     if (!url.pathname.startsWith("/api/")) return json({ ok: false, error: "No encontrado." }, 404);
@@ -108,20 +167,17 @@ export default {
       }
 
       await ensureSchema(env);
-      return await route(request, url, env);
+      return await route(request, url, env, botOf(url.searchParams.get("bot")));
     } catch (error) {
       console.error(error);
       const message = error instanceof UserError ? error.message : `Error interno: ${error.message || error}`;
-      if (!(error instanceof UserError)) await log(env, "error", message).catch(() => {});
+      if (!(error instanceof UserError)) await log(env, botOf(url.searchParams.get("bot")), "error", message).catch(() => {});
       return json({ ok: false, error: message }, 400);
     }
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(cron(env).catch(async error => {
-      console.error("cron", error);
-      await log(env, "error", `Piloto automático: ${error.message || error}`).catch(() => {});
-    }));
+    ctx.waitUntil(runAllBots(env));
   }
 };
 
@@ -144,12 +200,7 @@ export class Ticker extends DurableObject {
   async alarm() {
     await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
     await this.ctx.storage.put("lastTick", Date.now());
-    try {
-      await cron(this.env);
-    } catch (error) {
-      console.error("tick", error);
-      await log(this.env, "error", `Piloto automático: ${error.message || error}`).catch(() => {});
-    }
+    await runAllBots(this.env);
   }
 }
 
@@ -166,35 +217,48 @@ async function tickerStatus(env) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// API
+async function runAllBots(env) {
+  await ensureSchema(env);
+  await recoverStuck(env);
+  for (const bot of Object.keys(BOTS)) {
+    try {
+      await cron(env, bot);
+    } catch (error) {
+      console.error("tick", bot, error);
+      await log(env, bot, "error", `Piloto automático: ${error.message || error}`).catch(() => {});
+    }
+  }
+}
 
-async function route(request, url, env) {
+// ---------------------------------------------------------------------------
+// API (todas las rutas llevan ?bot=void|stayliquid)
+
+async function route(request, url, env, bot) {
   const body = request.method === "POST" ? await request.json().catch(() => ({})) : {};
   const path = url.pathname;
 
-  if (path === "/api/state" && request.method === "GET") return json(await getState(env));
+  if (path === "/api/state" && request.method === "GET") return json(await getState(env, bot));
 
   if (request.method !== "POST") throw new UserError("Método no permitido.");
 
   if (path === "/api/autopilot") {
-    const cfg = await saveConfig(env, { autopilot: Boolean(body.on) });
-    if (body.on) await setKey(env, "nextGenerationCheck", 0); // rellena la cola enseguida
-    await log(env, body.on ? "ok" : "warn", body.on ? "Piloto automático ENCENDIDO." : "Piloto automático APAGADO.");
+    const cfg = await saveConfig(env, bot, { autopilot: Boolean(body.on) });
+    if (body.on) await setKey(env, botKey(bot, "nextGenerationCheck"), 0); // rellena la cola enseguida
+    await log(env, bot, body.on ? "ok" : "warn", body.on ? "Bot EN MARCHA." : "Bot PARADO.");
     return json({ ok: true, config: cfg });
   }
 
   if (path === "/api/config") {
-    const cfg = await saveConfig(env, validateConfig(body));
-    await log(env, "info", "Ajustes guardados.");
+    const cfg = await saveConfig(env, bot, validateConfig(bot, body));
+    await log(env, bot, "info", "Ajustes guardados.");
     return json({ ok: true, config: cfg });
   }
 
   if (path === "/api/generate") {
     const count = clampInt(body.count, 1, 8, 4);
     const mode = body.mode === "manual" ? "manual" : "auto";
-    const topic = TOPICS[body.topic] ? body.topic : null;
-    const created = await generateBatch(env, count, mode, { topic });
+    const topic = BOTS[bot].topics[body.topic] ? body.topic : null;
+    const created = await generateBatch(env, bot, count, mode, { topic });
     return json({ ok: true, created });
   }
 
@@ -203,77 +267,94 @@ async function route(request, url, env) {
     checkLength(text);
     const mode = body.mode === "manual" ? "manual" : "auto";
     if (mode === "auto") checkFutureTime(body.scheduledAt);
-    const topic = TOPICS[body.topic] ? body.topic : classifyTopic(text);
-    const id = await insertTweet(env, { text, mode, articleUrl: null, articleTitle: "Escrito a mano", topic });
-    if (mode === "auto") await scheduleTweets(env, [id], body.scheduledAt);
-    await log(env, "info", `Tweet #${id} escrito a mano (${modeName(mode)}).`);
+    const topics = BOTS[bot].topics;
+    const topic = topics[body.topic] ? body.topic : (topics.other ? classifyTopic(text) : "promo");
+    const id = await insertTweet(env, bot, { text, mode, articleUrl: null, articleTitle: "Escrito a mano", topic });
+    if (mode === "auto") await scheduleTweets(env, bot, [id], body.scheduledAt);
+    await log(env, bot, "info", `Tweet #${id} escrito a mano (${modeName(mode)}).`);
     return json({ ok: true, id });
   }
 
   // Rehace con la IA (en el idioma configurado) hasta 3 tweets pendientes que no estén en ese idioma.
   if (path === "/api/rewrite-pending") {
-    const cfg = await getConfig(env);
+    const cfg = await getConfig(env, bot);
     const rows = await env.DB.prepare(
-      "SELECT * FROM tweets WHERE status IN ('pending','error') AND article_url IS NOT NULL ORDER BY scheduled_at IS NULL, scheduled_at, id"
-    ).all();
+      "SELECT * FROM tweets WHERE bot=? AND status IN ('pending','error') AND article_url IS NOT NULL ORDER BY scheduled_at IS NULL, scheduled_at, id"
+    ).bind(bot).all();
     const todo = (rows.results || []).filter(t => looksSpanish(t.text) !== (cfg.language === "es"));
     let done = 0;
     for (const tweet of todo.slice(0, 3)) {
-      await rewriteTweet(env, cfg, tweet);
+      await rewriteTweet(env, bot, cfg, tweet);
       done++;
     }
     return json({ ok: true, done, remaining: todo.length - done });
   }
 
   if (path === "/api/reschedule") {
-    const n = await rescheduleAll(env);
-    await log(env, "info", `Horarios recalculados para ${n} tweets automáticos.`);
+    const n = await rescheduleAll(env, bot);
+    await log(env, bot, "info", `Horarios recalculados para ${n} tweets automáticos.`);
     return json({ ok: true, count: n });
+  }
+
+  // Claves de la app de X de este bot (API Key / API Key Secret). Cada app tiene sus propios créditos.
+  if (path === "/api/x/app") {
+    const key = String(body.key || "").trim();
+    const secret = String(body.secret || "").trim();
+    if (!key && !secret) {
+      await env.DB.prepare("DELETE FROM tw_config WHERE key=?").bind(botKey(bot, "x_app")).run();
+      await log(env, bot, "warn", "Claves de la app de X borradas del panel.");
+      return json({ ok: true });
+    }
+    if (!/^[\w-]{10,}$/.test(key) || !/^[\w-]{20,}$/.test(secret)) {
+      throw new UserError("Esas claves no parecen válidas. Copia la «API Key» y la «API Key Secret» de tu app en developer.x.com.");
+    }
+    await setKey(env, botKey(bot, "x_app"), JSON.stringify({ key, secret, savedAt: new Date().toISOString() }));
+    await log(env, bot, "ok", "Claves de la app de X guardadas.");
+    return json({ ok: true });
   }
 
   // Paso 1 del OAuth: pide a X un token temporal y devuelve la página donde el usuario autoriza.
   if (path === "/api/x/connect") {
-    if (!env.X_CONSUMER_KEY || !env.X_CONSUMER_SECRET) {
-      throw new UserError("Faltan X_CONSUMER_KEY y X_CONSUMER_SECRET (las claves de la app de X) en Cloudflare.");
-    }
+    const app = await getXApp(env, bot);
+    if (!app) throw new UserError(`Primero guarda las claves de la app de X de ${BOTS[bot].name} (API Key y API Key Secret).`);
     const callback = new URL("/x/callback", url).toString();
-    const body = await xOAuthStep(env, "https://api.x.com/oauth/request_token", { oauth_callback: callback }, "");
-    if (body.get("oauth_callback_confirmed") !== "true") throw new UserError("X no ha aceptado la dirección de vuelta.");
-    const token = body.get("oauth_token");
+    const res = await xOAuthStep(app, "https://api.x.com/oauth/request_token", { oauth_callback: callback }, "");
+    if (res.get("oauth_callback_confirmed") !== "true") throw new UserError("X no ha aceptado la dirección de vuelta.");
+    const token = res.get("oauth_token");
     await env.DB.prepare("DELETE FROM tw_config WHERE key LIKE 'x_request_%'").run(); // solo una conexión pendiente
-    await setKey(env, `x_request_${token}`, JSON.stringify({ secret: body.get("oauth_token_secret"), at: Date.now() }));
+    await setKey(env, `x_request_${token}`, JSON.stringify({ secret: res.get("oauth_token_secret"), at: Date.now(), bot }));
     return json({ ok: true, url: `https://api.x.com/oauth/authorize?oauth_token=${encodeURIComponent(token)}`, callback });
   }
 
   if (path === "/api/x/disconnect") {
-    await env.DB.prepare("DELETE FROM tw_config WHERE key='x_account'").run();
-    await saveConfig(env, { xUsername: null });
-    await log(env, "warn", "Cuenta de X del panel desconectada: se vuelven a usar las claves de Cloudflare.");
+    await env.DB.prepare("DELETE FROM tw_config WHERE key=?").bind(botKey(bot, "x_account")).run();
+    await saveConfig(env, bot, { xUsername: null });
+    await log(env, bot, "warn", "Cuenta de X desconectada.");
     return json({ ok: true });
   }
 
   if (path === "/api/test-x") {
-    const me = await xRequest(env, "GET", "https://api.x.com/2/users/me");
+    const me = await xRequest(env, bot, "GET", "https://api.x.com/2/users/me");
     const username = me?.data?.username || null;
-    await saveConfig(env, { xUsername: username });
-    await log(env, "ok", `Conexión con X correcta: @${username}.`);
+    await saveConfig(env, bot, { xUsername: username });
+    await log(env, bot, "ok", `Conexión con X correcta: @${username}.`);
     return json({ ok: true, username, name: me?.data?.name || null });
   }
 
   if (path === "/api/test-ai") {
-    const cfg = await getConfig(env);
-    const text = await askAI(env, cfg.model, "Responde solo con esta frase: La IA de VOID funciona.", 1000);
+    const cfg = await getConfig(env, bot);
+    const text = await askAI(env, cfg.model, "Reply only with this sentence: The AI is working.", 1000);
     return json({ ok: true, model: cfg.model, text });
   }
 
   const match = path.match(/^\/api\/tweets\/(\d+)\/(edit|mode|publish|retry|delete|rewrite)$/);
-  if (match) return json(await tweetAction(env, Number(match[1]), match[2], body));
+  if (match) return json(await tweetAction(env, bot, Number(match[1]), match[2], body));
 
   throw new UserError("Ruta no encontrada.");
 }
 
-async function tweetAction(env, id, action, body) {
-  const tweet = await env.DB.prepare("SELECT * FROM tweets WHERE id=?").bind(id).first();
+async function tweetAction(env, bot, id, action, body) {
+  const tweet = await env.DB.prepare("SELECT * FROM tweets WHERE id=? AND bot=?").bind(id, bot).first();
   if (!tweet) throw new UserError("Ese tweet ya no existe.");
 
   if (action === "publish") {
@@ -298,20 +379,20 @@ async function tweetAction(env, id, action, body) {
     if (mode === "auto") checkFutureTime(body.scheduledAt);
     await env.DB.prepare("UPDATE tweets SET mode=?, status='pending', error=NULL, scheduled_at=NULL WHERE id=?")
       .bind(mode, id).run();
-    if (mode === "auto") await scheduleTweets(env, [id], body.scheduledAt);
-    await log(env, "info", `Tweet #${id} pasado a ${modeName(mode)}.`);
+    if (mode === "auto") await scheduleTweets(env, bot, [id], body.scheduledAt);
+    await log(env, bot, "info", `Tweet #${id} pasado a ${modeName(mode)}.`);
     return { ok: true };
   }
 
   if (action === "rewrite") {
-    if (!tweet.article_url) throw new UserError("Este tweet no viene de una noticia: edítalo a mano.");
-    await rewriteTweet(env, await getConfig(env), tweet);
+    if (!tweet.article_url) throw new UserError("Este tweet está escrito a mano: edítalo tú.");
+    await rewriteTweet(env, bot, await getConfig(env, bot), tweet);
     return { ok: true };
   }
 
   if (action === "retry") {
     await env.DB.prepare("UPDATE tweets SET status='pending', error=NULL, scheduled_at=NULL WHERE id=?").bind(id).run();
-    if (tweet.mode === "auto") await scheduleTweets(env, [id]);
+    if (tweet.mode === "auto") await scheduleTweets(env, bot, [id]);
     return { ok: true };
   }
 
@@ -321,36 +402,42 @@ async function tweetAction(env, id, action, body) {
   }
 }
 
-async function getState(env) {
-  const cfg = await getConfig(env);
+async function getState(env, bot) {
+  const cfg = await getConfig(env, bot);
   await recoverStuck(env);
 
   const [pending, published, errors, logRows] = await Promise.all([
-    env.DB.prepare("SELECT * FROM tweets WHERE status IN ('pending','sending') ORDER BY scheduled_at IS NULL, scheduled_at, created_at").all(),
-    env.DB.prepare("SELECT * FROM tweets WHERE status='published' ORDER BY published_at DESC LIMIT 60").all(),
-    env.DB.prepare("SELECT * FROM tweets WHERE status='error' ORDER BY created_at DESC LIMIT 60").all(),
-    env.DB.prepare("SELECT * FROM tw_log ORDER BY id DESC LIMIT 80").all()
+    env.DB.prepare("SELECT * FROM tweets WHERE bot=? AND status IN ('pending','sending') ORDER BY scheduled_at IS NULL, scheduled_at, created_at").bind(bot).all(),
+    env.DB.prepare("SELECT * FROM tweets WHERE bot=? AND status='published' ORDER BY published_at DESC LIMIT 60").bind(bot).all(),
+    env.DB.prepare("SELECT * FROM tweets WHERE bot=? AND status='error' ORDER BY created_at DESC LIMIT 60").bind(bot).all(),
+    env.DB.prepare("SELECT * FROM tw_log WHERE bot=? ORDER BY id DESC LIMIT 80").bind(bot).all()
   ]);
 
   const rows = pending.results || [];
   const now = new Date();
-  const stats = await getStats(env, cfg, now);
-  const clock = await tickerStatus(env);
+  const creds = await xCredsStatus(env, bot);
+
+  // Estado de los dos bots, para el selector de arriba.
+  const bots = {};
+  for (const [id, b] of Object.entries(BOTS)) {
+    const c = id === bot ? cfg : await getConfig(env, id);
+    bots[id] = { name: b.name, emoji: b.emoji, autopilot: c.autopilot, xUsername: c.xUsername };
+  }
 
   return {
     ok: true,
     version: VERSION,
     now: now.toISOString(),
+    bot,
+    bots,
     config: cfg,
-    stats,
-    clock,
-    xAccount: await xAccountInfo(env),
-    secrets: {
-      x: (await getXAccount(env) ? ["X_CONSUMER_KEY", "X_CONSUMER_SECRET"] : ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"]).filter(k => !env[k]),
-      ai: Boolean(env.AI)
-    },
-    topics: Object.fromEntries(Object.entries(TOPICS).map(([k, t]) => [k, { label: t.label, emoji: t.emoji }])),
-    prepared: countByTopic(rows.filter(t => t.mode === cfg.newTweetsMode)),
+    stats: await getStats(env, bot, cfg, now),
+    clock: await tickerStatus(env),
+    xAccount: creds.account,
+    xApp: creds.app,
+    secrets: { x: creds.missing, ai: Boolean(env.AI) },
+    topics: Object.fromEntries(Object.entries(BOTS[bot].topics).map(([k, t]) => [k, { label: t.label, emoji: t.emoji }])),
+    prepared: countByTopic(bot, rows.filter(t => t.mode === cfg.newTweetsMode)),
     auto: rows.filter(t => t.mode === "auto"),
     manual: rows.filter(t => t.mode === "manual"),
     published: published.results || [],
@@ -359,18 +446,20 @@ async function getState(env) {
   };
 }
 
-function countByTopic(rows) {
-  const out = Object.fromEntries(Object.keys(TOPICS).map(k => [k, 0]));
-  for (const t of rows) out[TOPICS[t.topic] ? t.topic : "other"]++;
+function countByTopic(bot, rows) {
+  const topics = BOTS[bot].topics;
+  const fallback = topics.other ? "other" : Object.keys(topics)[0];
+  const out = Object.fromEntries(Object.keys(topics).map(k => [k, 0]));
+  for (const t of rows) out[topics[t.topic] ? t.topic : fallback]++;
   return out;
 }
 
-async function getStats(env, cfg, now) {
+async function getStats(env, bot, cfg, now) {
   const today = localDate(now, cfg.timezone);
   const month = today.slice(0, 7);
   const recent = await env.DB.prepare(
-    "SELECT published_at, cost_eur FROM tweets WHERE status='published' AND published_at >= ?"
-  ).bind(new Date(now.getTime() - 32 * 86400000).toISOString()).all();
+    "SELECT published_at, cost_eur FROM tweets WHERE bot=? AND status='published' AND published_at >= ?"
+  ).bind(bot, new Date(now.getTime() - 32 * 86400000).toISOString()).all();
 
   let publishedToday = 0;
   let spentMonth = 0;
@@ -381,11 +470,11 @@ async function getStats(env, cfg, now) {
   }
 
   const next = await env.DB.prepare(
-    "SELECT id, scheduled_at FROM tweets WHERE status='pending' AND mode='auto' ORDER BY scheduled_at LIMIT 1"
-  ).first();
+    "SELECT id, scheduled_at FROM tweets WHERE bot=? AND status='pending' AND mode='auto' ORDER BY scheduled_at LIMIT 1"
+  ).bind(bot).first();
   const next24 = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM tweets WHERE status='pending' AND mode='auto' AND scheduled_at <= ?"
-  ).bind(new Date(now.getTime() + 86400000).toISOString()).first();
+    "SELECT COUNT(*) AS n FROM tweets WHERE bot=? AND status='pending' AND mode='auto' AND scheduled_at <= ?"
+  ).bind(bot, new Date(now.getTime() + 86400000).toISOString()).first();
 
   return {
     publishedToday,
@@ -396,29 +485,26 @@ async function getStats(env, cfg, now) {
 }
 
 // ---------------------------------------------------------------------------
-// Piloto automático (cron cada minuto)
+// Piloto automático (cada minuto, para cada bot)
 
-async function cron(env) {
-  await ensureSchema(env);
-  const cfg = await getConfig(env);
-  await recoverStuck(env);
+async function cron(env, bot) {
+  const cfg = await getConfig(env, bot);
   if (!cfg.autopilot) return;
 
-  await fixUnscheduled(env);
-  await publishDue(env, cfg);
+  await fixUnscheduled(env, bot);
+  await publishDue(env, bot, cfg);
 
-  // Mantiene la cola llena: siempre hay tweets preparados para las próximas 24 h
-  // (tantos como el máximo diario). Genera de 4 en 4 para que cada vuelta sea corta.
-  const nextCheck = Number(await getKey(env, "nextGenerationCheck")) || 0;
+  // Mantiene la cola llena según el plan del día. Genera de 4 en 4 para que cada vuelta sea corta.
+  const nextCheck = Number(await getKey(env, botKey(bot, "nextGenerationCheck"))) || 0;
   if (Date.now() < nextCheck) return;
 
   const queued = await env.DB.prepare(
-    "SELECT topic FROM tweets WHERE status='pending' AND mode=?"
-  ).bind(cfg.newTweetsMode).all();
-  const have = countByTopic(queued.results || []);
+    "SELECT topic FROM tweets WHERE bot=? AND status='pending' AND mode=?"
+  ).bind(bot, cfg.newTweetsMode).all();
+  const have = countByTopic(bot, queued.results || []);
   const quota = {};
   let missing = 0;
-  for (const key of Object.keys(TOPICS)) {
+  for (const key of Object.keys(BOTS[bot].topics)) {
     quota[key] = Math.max(0, (Number(cfg.topicPlan?.[key]) || 0) - have[key]);
     missing += quota[key];
   }
@@ -426,38 +512,38 @@ async function cron(env) {
 
   let wait = 20 * 60000;
   try {
-    const created = await generateBatch(env, Math.min(4, missing), cfg.newTweetsMode, { fromCron: true, quota });
+    const created = await generateBatch(env, bot, Math.min(4, missing), cfg.newTweetsMode, { fromCron: true, quota });
     if (created === null) return;            // otra vuelta ya está generando
-    if (created.length) wait = 60000;        // hay noticias: sigue llenando en el siguiente minuto
+    if (created.length) wait = 60000;        // hay material: sigue llenando en el siguiente minuto
   } finally {
-    await setKey(env, "nextGenerationCheck", Date.now() + wait);
+    await setKey(env, botKey(bot, "nextGenerationCheck"), Date.now() + wait);
   }
 }
 
 // Un automático sin hora (por ejemplo si una vuelta se cortó) recibe el siguiente hueco libre.
-async function fixUnscheduled(env) {
+async function fixUnscheduled(env, bot) {
   const rows = await env.DB.prepare(
-    "SELECT id FROM tweets WHERE status='pending' AND mode='auto' AND scheduled_at IS NULL ORDER BY id"
-  ).all();
+    "SELECT id FROM tweets WHERE bot=? AND status='pending' AND mode='auto' AND scheduled_at IS NULL ORDER BY id"
+  ).bind(bot).all();
   const ids = (rows.results || []).map(r => r.id);
-  if (ids.length) await scheduleTweets(env, ids);
+  if (ids.length) await scheduleTweets(env, bot, ids);
 }
 
-async function publishDue(env, cfg) {
+async function publishDue(env, bot, cfg) {
   const now = new Date();
   if (!inWindow(now, cfg)) return;
 
   const lastPub = await env.DB.prepare(
-    "SELECT published_at FROM tweets WHERE status='published' ORDER BY published_at DESC LIMIT 1"
-  ).first();
+    "SELECT published_at FROM tweets WHERE bot=? AND status='published' ORDER BY published_at DESC LIMIT 1"
+  ).bind(bot).first();
   if (lastPub && now - Date.parse(lastPub.published_at) < cfg.minMinutesBetween * 60000) return;
 
-  const stats = await getStats(env, cfg, now);
+  const stats = await getStats(env, bot, cfg, now);
   if (stats.publishedToday >= cfg.maxPerDay) return;
 
   const due = await env.DB.prepare(
-    "SELECT * FROM tweets WHERE status='pending' AND mode='auto' AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 1"
-  ).bind(now.toISOString()).first();
+    "SELECT * FROM tweets WHERE bot=? AND status='pending' AND mode='auto' AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 1"
+  ).bind(bot, now.toISOString()).first();
   if (!due) return;
 
   try {
@@ -481,14 +567,15 @@ async function recoverStuck(env) {
 // Publicar en X
 
 async function publishTweet(env, tweet, { manual }) {
-  const cfg = await getConfig(env);
+  const bot = botOf(tweet.bot);
+  const cfg = await getConfig(env, bot);
   checkLength(tweet.text);
 
   const cost = tweet.has_link ? cfg.costPerLinkTweetEur : cfg.costPerTweetEur;
-  const stats = await getStats(env, cfg, new Date());
+  const stats = await getStats(env, bot, cfg, new Date());
   if (stats.spentMonth + cost > cfg.monthlyBudgetEur) {
     const message = `Presupuesto del mes agotado (${stats.spentMonth.toFixed(2)} € de ${cfg.monthlyBudgetEur} €). Súbelo en Ajustes.`;
-    if (!manual) await log(env, "warn", message);
+    if (!manual) await log(env, bot, "warn", message);
     throw new UserError(message);
   }
 
@@ -499,53 +586,72 @@ async function publishTweet(env, tweet, { manual }) {
   if (!claim.meta.changes) throw new UserError("Este tweet ya se está enviando.");
 
   try {
-    const result = await xRequest(env, "POST", "https://api.x.com/2/tweets", { text: tweet.text });
+    const result = await xRequest(env, bot, "POST", "https://api.x.com/2/tweets", { text: tweet.text });
     const xId = result?.data?.id || null;
     await env.DB.prepare(
       "UPDATE tweets SET status='published', x_post_id=?, published_at=?, cost_eur=?, error=NULL WHERE id=?"
     ).bind(xId, new Date().toISOString(), cost, tweet.id).run();
-    await log(env, "ok", `Tweet #${tweet.id} publicado en X${manual ? " (a mano)" : " (automático)"}.`);
+    await log(env, bot, "ok", `Tweet #${tweet.id} publicado en X${manual ? " (a mano)" : " (automático)"}.`);
     return { xPostId: xId };
   } catch (error) {
     const message = error.message || String(error);
     await env.DB.prepare("UPDATE tweets SET status='error', error=? WHERE id=?").bind(message, tweet.id).run();
-    await log(env, "error", `Tweet #${tweet.id} no se pudo publicar: ${message}`);
+    await log(env, bot, "error", `Tweet #${tweet.id} no se pudo publicar: ${message}`);
     if (error.status === 402) {
-      await saveConfig(env, { autopilot: false });
-      await log(env, "warn", "Piloto apagado: X dice que no quedan créditos.");
+      await saveConfig(env, bot, { autopilot: false });
+      await log(env, bot, "warn", "Bot parado: X dice que no quedan créditos.");
     }
     throw new UserError(message);
   }
 }
 
-// Cuenta en la que publica el bot: la conectada desde el panel ("Conectar mi cuenta de X")
-// o, si no hay ninguna, la de los secretos X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET.
-async function getXAccount(env) {
+// App de X del bot (sus créditos): la guardada en el panel o, si no hay, la de los secretos de Cloudflare.
+async function getXApp(env, bot) {
   try {
-    const stored = JSON.parse(await getKey(env, "x_account") || "null");
-    if (stored?.token && stored?.secret) return stored;
+    const stored = JSON.parse(await getKey(env, botKey(bot, "x_app")) || "null");
+    if (stored?.key && stored?.secret) return { key: stored.key, secret: stored.secret, source: "panel" };
   } catch {}
+  const e = BOTS[bot].env;
+  if (env[e.key] && env[e.secret]) return { key: env[e.key], secret: env[e.secret], source: "cloudflare" };
   return null;
 }
 
-async function xAccountInfo(env) {
-  const stored = await getXAccount(env);
-  if (stored) return { source: "panel", username: stored.username || null, connectedAt: stored.connectedAt || null };
-  return { source: env.X_ACCESS_TOKEN ? "cloudflare" : "none", username: null };
+// Cuenta en la que publica el bot: la conectada desde el panel o, si no hay, la de los secretos.
+async function getXAccount(env, bot) {
+  try {
+    const stored = JSON.parse(await getKey(env, botKey(bot, "x_account")) || "null");
+    if (stored?.token && stored?.secret) return { ...stored, source: "panel" };
+  } catch {}
+  const e = BOTS[bot].env;
+  if (env[e.token] && env[e.tokenSecret]) return { token: env[e.token], secret: env[e.tokenSecret], source: "cloudflare" };
+  return null;
 }
 
-async function xRequest(env, method, endpoint, payload) {
-  const stored = await getXAccount(env);
-  const required = stored ? ["X_CONSUMER_KEY", "X_CONSUMER_SECRET"] : ["X_CONSUMER_KEY", "X_CONSUMER_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_TOKEN_SECRET"];
-  const missing = required.filter(k => !env[k]);
-  if (missing.length) throw new UserError(`Faltan secretos de X en Cloudflare: ${missing.join(", ")}.`);
-  const token = stored ? stored.token : env.X_ACCESS_TOKEN;
-  const tokenSecret = stored ? stored.secret : env.X_ACCESS_TOKEN_SECRET;
+async function xCredsStatus(env, bot) {
+  const app = await getXApp(env, bot);
+  const account = await getXAccount(env, bot);
+  const missing = [];
+  if (!app) missing.push("claves de la app de X");
+  if (!account) missing.push("cuenta de X conectada");
+  return {
+    missing,
+    app: app ? { source: app.source, keyHint: `${app.key.slice(0, 4)}…${app.key.slice(-3)}` } : { source: "none" },
+    account: account
+      ? { source: account.source, username: account.username || null, connectedAt: account.connectedAt || null }
+      : { source: "none", username: null }
+  };
+}
+
+async function xRequest(env, bot, method, endpoint, payload) {
+  const app = await getXApp(env, bot);
+  const account = await getXAccount(env, bot);
+  if (!app) throw new UserError(`Faltan las claves de la app de X de ${BOTS[bot].name}. Ponlas en Ajustes.`);
+  if (!account) throw new UserError(`${BOTS[bot].name} no tiene cuenta de X conectada. Pulsa «Conectar cuenta de X» en Ajustes.`);
 
   const response = await fetch(endpoint, {
     method,
     headers: {
-      authorization: await oauthHeader(env, method, endpoint, { oauth_token: token }, tokenSecret),
+      authorization: await oauthHeader(app, method, endpoint, { oauth_token: account.token }, account.secret),
       ...(payload ? { "content-type": "application/json" } : {})
     },
     body: payload ? JSON.stringify(payload) : undefined,
@@ -564,24 +670,24 @@ async function xRequest(env, method, endpoint, payload) {
 function explainXError(status, body) {
   const raw = body.slice(0, 400);
   const lower = body.toLowerCase();
-  if (status === 401) return "X rechaza las claves (401). Revisa que las 4 claves X_ sean de la misma app y estén bien copiadas.";
+  if (status === 401) return "X rechaza las claves (401). Revisa las claves de la app y vuelve a conectar la cuenta de X.";
   if (status === 403 && lower.includes("duplicate")) return "X no deja publicar un tweet repetido. Cambia el texto.";
   if (status === 403 && (lower.includes("oauth1-permissions") || lower.includes("not permitted") || lower.includes("permission"))) {
-    return "La app de X no tiene permiso de ESCRITURA. En developer.x.com → tu app → User authentication settings, pon «Read and write» y después REGENERA el Access Token y el Access Token Secret y cámbialos en Cloudflare.";
+    return "La app de X no tiene permiso de ESCRITURA. En developer.x.com → tu app → User authentication settings pon «Read and write» y vuelve a conectar la cuenta.";
   }
   if (status === 403) return `X ha bloqueado la publicación (403): ${raw}`;
-  if (status === 402) return "Tu cuenta de X API no tiene créditos (402). Recarga en developer.x.com.";
+  if (status === 402) return "La app de X no tiene créditos (402). Recarga en developer.x.com.";
   if (status === 429) return "X dice que vas demasiado rápido (429). Se reintentará más tarde.";
   return `X respondió ${status}: ${raw}`;
 }
 
 // Firma OAuth 1.0a (HMAC-SHA1). `extra` añade parámetros oauth_* (token, callback, verifier).
-async function oauthHeader(env, method, endpoint, extra, tokenSecret) {
+async function oauthHeader(app, method, endpoint, extra, tokenSecret) {
   const enc = value => encodeURIComponent(String(value))
     .replace(/[!'()*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 
   const oauth = {
-    oauth_consumer_key: env.X_CONSUMER_KEY,
+    oauth_consumer_key: app.key,
     oauth_nonce: crypto.randomUUID().replace(/-/g, ""),
     oauth_signature_method: "HMAC-SHA1",
     oauth_timestamp: String(Math.floor(Date.now() / 1000)),
@@ -592,7 +698,7 @@ async function oauthHeader(env, method, endpoint, extra, tokenSecret) {
   // El cuerpo JSON no entra en la firma; solo los parámetros oauth (el endpoint no lleva query).
   const params = Object.keys(oauth).sort().map(k => `${enc(k)}=${enc(oauth[k])}`).join("&");
   const base = [method.toUpperCase(), enc(endpoint), enc(params)].join("&");
-  const signingKey = `${enc(env.X_CONSUMER_SECRET)}&${enc(tokenSecret || "")}`;
+  const signingKey = `${enc(app.secret)}&${enc(tokenSecret || "")}`;
 
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(signingKey), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
@@ -604,22 +710,23 @@ async function oauthHeader(env, method, endpoint, extra, tokenSecret) {
 }
 
 // Pasos 1 y 3 del OAuth de 3 patas: X responde con un formulario (a=1&b=2), no con JSON.
-async function xOAuthStep(env, endpoint, extra, tokenSecret) {
+async function xOAuthStep(app, endpoint, extra, tokenSecret) {
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { authorization: await oauthHeader(env, "POST", endpoint, extra, tokenSecret) },
+    headers: { authorization: await oauthHeader(app, "POST", endpoint, extra, tokenSecret) },
     signal: AbortSignal.timeout(20000)
   });
   const text = await response.text();
   if (!response.ok) {
     if (response.status === 401 && /callback/i.test(text)) {
-      throw new UserError("X no reconoce la dirección de vuelta. Añade la «Callback URI» que sale en el panel en developer.x.com → tu app → User authentication settings.");
+      throw new UserError("X no reconoce la dirección de vuelta. Pon la «Callback URI» que sale en el panel en developer.x.com → tu app → User authentication settings.");
     }
     throw new UserError(explainXError(response.status, text));
   }
   return new URLSearchParams(text);
 }
 
+// Devuelve el bot al que se ha conectado la cuenta.
 async function finishXConnect(env, url) {
   if (url.searchParams.get("denied")) throw new Error("Has cancelado la autorización en X.");
   const token = url.searchParams.get("oauth_token");
@@ -629,97 +736,240 @@ async function finishXConnect(env, url) {
   const key = `x_request_${token}`;
   const pending = JSON.parse(await getKey(env, key) || "null");
   await env.DB.prepare("DELETE FROM tw_config WHERE key=?").bind(key).run();
-  if (!pending || Date.now() - pending.at > 15 * 60000) throw new Error("La autorización ha caducado. Vuelve a pulsar «Conectar mi cuenta de X».");
+  if (!pending || Date.now() - pending.at > 15 * 60000) throw new Error("La autorización ha caducado. Vuelve a pulsar «Conectar cuenta de X».");
 
-  const body = await xOAuthStep(env, "https://api.x.com/oauth/access_token",
+  const bot = botOf(pending.bot);
+  const app = await getXApp(env, bot);
+  if (!app) throw new Error("Faltan las claves de la app de X de este bot.");
+  const res = await xOAuthStep(app, "https://api.x.com/oauth/access_token",
     { oauth_token: token, oauth_verifier: verifier }, pending.secret);
   const account = {
-    token: body.get("oauth_token"),
-    secret: body.get("oauth_token_secret"),
-    userId: body.get("user_id"),
-    username: body.get("screen_name"),
+    token: res.get("oauth_token"),
+    secret: res.get("oauth_token_secret"),
+    userId: res.get("user_id"),
+    username: res.get("screen_name"),
     connectedAt: new Date().toISOString()
   };
   if (!account.token || !account.secret) throw new Error("X no ha devuelto las claves de la cuenta.");
 
-  await setKey(env, "x_account", JSON.stringify(account));
-  await saveConfig(env, { xUsername: account.username });
-  await log(env, "ok", `Cuenta de X conectada: @${account.username}. El bot publicará en ella.`);
+  await setKey(env, botKey(bot, "x_account"), JSON.stringify(account));
+  await saveConfig(env, bot, { xUsername: account.username });
+  await log(env, bot, "ok", `Cuenta de X conectada: @${account.username}. ${BOTS[bot].name} publicará en ella.`);
+  return bot;
+}
+
+// ---------------------------------------------------------------------------
+// Material para los tweets
+// Cada elemento: { topic, title, description, url, key (para no repetir), facts? }
+
+async function collectMaterial(env, bot, cfg, topicFilter) {
+  const wants = t => !topicFilter || topicFilter === t;
+  let items = [];
+
+  if (bot === "void") {
+    items = (await fetchArticles(env, cfg)).map(a => ({ ...a, key: a.url, topic: classifyTopic(a.title, a.description) }));
+  } else {
+    if (wants("memecoins") || wants("crypto")) {
+      for (const a of await fetchArticles(env, cfg)) {
+        if (classifyTopic(a.title, a.description) !== "crypto") continue;
+        items.push({ ...a, key: a.url, topic: isMemeNews(a.title, a.description) ? "memecoins" : "crypto" });
+      }
+    }
+    if (wants("trades")) {
+      try {
+        items.push(...await fetchWinningTrades(env, bot, cfg));
+      } catch (error) {
+        await log(env, bot, "warn", `No se pudieron leer las operaciones de stayliquid.tech: ${error.message || error}`);
+      }
+    }
+    if (wants("promo")) items.push(...await promoItems(env, bot, cfg));
+  }
+
+  return topicFilter ? items.filter(i => i.topic === topicFilter) : items;
+}
+
+// Operaciones cerradas con ganancia del bot de StayLiquid (historial público de stayliquid.tech).
+async function fetchWinningTrades(env, bot, cfg) {
+  const history = await fetchStayLiquidHistory(cfg);
+  const closes = computeCloses(history.items || []);
+  const since = Date.now() - cfg.maxArticleAgeHours * 3600000;
+  const wins = closes
+    .filter(c => c.closeAt >= since && c.cost >= cfg.minTradeSol && c.pct >= cfg.minTradePct && c.pct < 5000)
+    .sort((a, b) => b.closeAt - a.closeAt);
+  if (!wins.length) return [];
+
+  const keys = wins.map(c => `stayliquid:trade:${c.sig}`);
+  const used = await usedKeys(env, bot, keys);
+  return wins.filter(c => !used.has(`stayliquid:trade:${c.sig}`)).map(c => ({
+    topic: "trades",
+    key: `stayliquid:trade:${c.sig}`,
+    url: cfg.appUrl,
+    title: `StayLiquid bot closed a +${c.pct.toFixed(1)}% trade`,
+    description: "",
+    facts: [
+      `Profit: +${c.profit.toFixed(3)} SOL (+${c.pct.toFixed(1)}%)`,
+      `Entry: ${c.cost.toFixed(3)} SOL, exit: ${c.proceeds.toFixed(3)} SOL`,
+      `Time in the trade: ${formatDuration(c.closeAt - c.openAt)}`,
+      `Market: ${c.venue === "pump" ? "pump.fun memecoin" : "Solana memecoin"} (token ${c.mint.slice(0, 4)}…${c.mint.slice(-4)})`
+    ]
+  }));
+}
+
+async function fetchStayLiquidHistory(cfg) {
+  const response = await fetch(cfg.historyUrl, {
+    headers: { accept: "application/json", "user-agent": `VOID-Lanzador/${VERSION}` },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+// Junta compras y ventas por token: una posición se cierra cuando se vende el 100 %.
+export function computeCloses(items) {
+  const open = new Map();
+  const closes = [];
+  for (const t of [...items].sort((a, b) => a.at - b.at)) {
+    if (!t.mint || !Number.isFinite(t.sol)) continue;
+    const pos = open.get(t.mint) || { cost: 0, proceeds: 0, openAt: t.at };
+    if (t.side === "buy") {
+      if (!pos.cost && !pos.proceeds) pos.openAt = t.at;
+      pos.cost += t.sol;
+      open.set(t.mint, pos);
+    } else if (t.side === "sell") {
+      pos.proceeds += t.sol;
+      if (Number(t.sellFrac) >= 1) {
+        if (pos.cost > 0) {
+          const profit = pos.proceeds - pos.cost;
+          closes.push({
+            mint: t.mint, sig: t.sig, venue: t.venue, cost: pos.cost, proceeds: pos.proceeds,
+            profit, pct: (profit / pos.cost) * 100, openAt: pos.openAt, closeAt: t.at
+          });
+        }
+        open.delete(t.mint);
+      } else {
+        open.set(t.mint, pos);
+      }
+    }
+  }
+  return closes;
+}
+
+// Tweets de promoción: hechos de la app y estadísticas en vivo. Siempre llevan enlace a la web.
+async function promoItems(env, bot, cfg) {
+  // Solo cifras de operaciones concretas (coinciden con la web); los totales los calcula la web a su manera.
+  let live = "";
+  try {
+    const since = Date.now() - 7 * 86400000;
+    const best = computeCloses((await fetchStayLiquidHistory(cfg)).items || [])
+      .filter(c => c.closeAt >= since && c.cost >= cfg.minTradeSol && c.pct < 5000)
+      .sort((a, b) => b.pct - a.pct)[0];
+    if (best && best.pct > 0) live = `Best trade of the bot this week: +${best.pct.toFixed(1)}% (+${best.profit.toFixed(3)} SOL) in ${formatDuration(best.closeAt - best.openAt)}.`;
+  } catch {}
+  const recent = await env.DB.prepare(
+    "SELECT text FROM tweets WHERE bot=? AND topic='promo' ORDER BY id DESC LIMIT 5"
+  ).bind(bot).all();
+  const angles = [
+    "Explain what StayLiquid is in one punchy line and invite people to watch the bot trade live.",
+    "Highlight that it is non-custodial: you copy each trade signing it in your own wallet; StayLiquid never holds your funds.",
+    "Use the best trade of the week to show what the bot can do (only the given numbers).",
+    "Mention the live terminal: every buy and sell of the bot appears on-chain in real time, fully transparent.",
+    "Invite memecoin traders on Solana to follow the bot and copy it with their own limits (stop loss, take profit)."
+  ];
+  return angles.map((angle, i) => ({
+    topic: "promo",
+    key: `stayliquid:promo:${Date.now()}:${i}`,
+    url: cfg.appUrl,
+    alwaysLink: true,
+    title: "StayLiquid promo",
+    description: "",
+    facts: [
+      "StayLiquid is a copy-trading bot for Solana memecoins (pump.fun).",
+      "You follow the bot's trades live and copy each one by signing it in your own wallet (Phantom, Brave Wallet).",
+      "Non-custodial: StayLiquid never signs for you and never holds your funds.",
+      "Live terminal with every on-chain buy and sell, stats, win rate and PnL.",
+      live,
+      `Angle for this tweet: ${angle}`,
+      recent.results?.length ? `Do NOT repeat these previous promo tweets: ${recent.results.map(r => r.text).join(" || ").slice(0, 900)}` : ""
+    ].filter(Boolean)
+  }));
 }
 
 // ---------------------------------------------------------------------------
 // Generar tweets con IA
 
-async function generateBatch(env, count, mode, { fromCron = false, topic = null, quota = null } = {}) {
-  const lock = await acquireLock(env, "generate", 600);
+async function generateBatch(env, bot, count, mode, { fromCron = false, topic = null, quota = null } = {}) {
+  const lock = await acquireLock(env, `generate:${bot}`, 600);
   if (!lock) {
     if (fromCron) return null;
     throw new UserError("Ya se están generando tweets. Espera un momento.");
   }
 
   try {
-    const cfg = await getConfig(env);
-    let articles = await fetchArticles(env, cfg);
-    if (topic) articles = articles.filter(a => a.topic === topic);
+    const cfg = await getConfig(env, bot);
+    const items = await collectMaterial(env, bot, cfg, topic);
 
-    // Con plan diario: solo coge noticias de los temas a los que aún les faltan tweets.
+    // Con plan diario: solo coge material de los temas a los que aún les faltan tweets.
     let selected = [];
     if (quota) {
       const left = { ...quota };
-      for (const a of articles) {
+      for (const item of items) {
         if (selected.length >= count) break;
-        if (left[a.topic] > 0) { selected.push(a); left[a.topic]--; }
+        if (left[item.topic] > 0) { selected.push(item); left[item.topic]--; }
       }
     } else {
-      selected = articles.slice(0, count);
+      selected = items.slice(0, count);
     }
 
     if (!selected.length) {
       if (fromCron) return [];
+      const topics = BOTS[bot].topics;
       throw new UserError(topic
-        ? `No hay noticias nuevas de «${TOPICS[topic].label}» en el RSS ahora mismo.`
-        : "No hay noticias nuevas en el RSS (todas tienen ya su tweet o son antiguas).");
+        ? `No hay material nuevo de «${topics[topic].label}» ahora mismo.`
+        : "No hay material nuevo ahora mismo (las noticias ya tienen su tweet o son antiguas).");
     }
 
     const created = [];
     const failures = [];
 
-    for (let i = 0; i < selected.length; i++) {
-      const article = selected[i];
+    for (const item of selected) {
       try {
-        const withLink = await nextNeedsLink(env, cfg);
-        const text = await writeTweet(env, cfg, article, withLink);
-        const id = await insertTweet(env, {
-          text, mode, articleUrl: article.url, articleTitle: article.title,
-          articleSummary: article.description, topic: article.topic
+        const withLink = item.alwaysLink || await nextNeedsLink(env, bot, cfg);
+        const text = await writeTweet(env, bot, cfg, item, withLink);
+        const id = await insertTweet(env, bot, {
+          text, mode, articleUrl: item.key, articleTitle: item.title,
+          articleSummary: item.facts ? item.facts.join("\n") : item.description,
+          topic: item.topic, linkUrl: item.url
         });
         // Se programa en cuanto se crea, así nunca queda un automático sin hora.
-        if (mode === "auto") await scheduleTweets(env, [id]);
+        if (mode === "auto") await scheduleTweets(env, bot, [id]);
         created.push(id);
       } catch (error) {
-        failures.push(`${article.title}: ${error.message || error}`);
+        failures.push(`${item.title}: ${error.message || error}`);
       }
     }
 
-    if (created.length) {
-      await log(env, "ok", `${created.length} tweets nuevos creados como ${modeName(mode)}.`);
-    }
-    if (failures.length) {
-      await log(env, "error", `La IA falló en ${failures.length} noticias: ${failures.join(" | ").slice(0, 900)}`);
-    }
+    if (created.length) await log(env, bot, "ok", `${created.length} tweets nuevos creados como ${modeName(mode)}.`);
+    if (failures.length) await log(env, bot, "error", `La IA falló en ${failures.length}: ${failures.join(" | ").slice(0, 900)}`);
     if (!created.length) throw new UserError("La IA no pudo redactar ningún tweet. Mira la pestaña Actividad.");
 
     return created;
   } finally {
-    await releaseLock(env, "generate", lock);
+    await releaseLock(env, `generate:${bot}`, lock);
   }
 }
 
-async function rewriteTweet(env, cfg, tweet) {
-  const article = { title: tweet.article_title || "", description: tweet.article_summary || "", url: tweet.article_url };
-  const text = await writeTweet(env, cfg, article, Boolean(tweet.has_link));
-  await env.DB.prepare("UPDATE tweets SET text=?, has_link=?, topic=COALESCE(topic, ?) WHERE id=?")
-    .bind(text, hasLink(text) ? 1 : 0, classifyTopic(article.title, article.description), tweet.id).run();
+async function rewriteTweet(env, bot, cfg, tweet) {
+  const isNews = /^https?:\/\//.test(tweet.article_url);
+  const item = {
+    topic: tweet.topic,
+    title: tweet.article_title || "",
+    url: tweet.link_url || (isNews ? tweet.article_url : BOTS[bot].defaults.appUrl),
+    description: isNews ? (tweet.article_summary || "") : "",
+    facts: isNews ? null : String(tweet.article_summary || "").split("\n").filter(Boolean)
+  };
+  const text = await writeTweet(env, bot, cfg, item, Boolean(tweet.has_link));
+  await env.DB.prepare("UPDATE tweets SET text=?, has_link=? WHERE id=?")
+    .bind(text, hasLink(text) ? 1 : 0, tweet.id).run();
 }
 
 // Detección sencilla de español (para avisar de tweets en el idioma equivocado).
@@ -730,53 +980,80 @@ function looksSpanish(text) {
 }
 
 // Lleva enlace si desde el último tweet con enlace ya van (linkEvery - 1) sin él.
-async function nextNeedsLink(env, cfg) {
+async function nextNeedsLink(env, bot, cfg) {
   const every = Number(cfg.linkEvery);
   if (!every) return false;
   if (every === 1) return true;
   const lastLinked = await env.DB.prepare(
-    "SELECT MAX(id) AS id FROM tweets WHERE article_url IS NOT NULL AND has_link=1"
-  ).first();
+    "SELECT MAX(id) AS id FROM tweets WHERE bot=? AND article_url IS NOT NULL AND has_link=1"
+  ).bind(bot).first();
   const since = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM tweets WHERE article_url IS NOT NULL AND id > ?"
-  ).bind(Number(lastLinked?.id || 0)).first();
+    "SELECT COUNT(*) AS n FROM tweets WHERE bot=? AND article_url IS NOT NULL AND id > ?"
+  ).bind(bot, Number(lastLinked?.id || 0)).first();
   return Number(since?.n || 0) >= every - 1;
 }
 
-async function writeTweet(env, cfg, article, withLink) {
+function buildPrompt(bot, cfg, item, target) {
+  const es = cfg.language === "es";
+  const langRule = es
+    ? "- Escribe en español de España."
+    : "- Write in English. If the source is not in English, translate it.";
+  const common = [
+    langRule,
+    `- Maximum ${target} characters.`,
+    "- Use only the facts given. Do not invent numbers, dates, names or quotes.",
+    "- No hashtags, no links and no quotation marks around the text.",
+    "- Return only the tweet text, nothing else."
+  ];
+
+  if (bot === "void") {
+    return [
+      "Write ONE tweet for the X account of Noticiero VOID (markets, crypto, tech and AI news).",
+      "Rules:",
+      "- Sharp newswire style: direct, clear, with a hook. No emojis.",
+      ...common,
+      "",
+      `HEADLINE: ${item.title}`,
+      `SUMMARY: ${(item.description || "").slice(0, 1500) || "(no summary)"}`
+    ].join("\n");
+  }
+
+  const voice = "- Voice: confident crypto-native trader, punchy and fun but credible. At most one emoji.";
+  const noPromises = "- Never promise profits or guaranteed returns. Past results are not a guarantee.";
+  if (item.topic === "trades") {
+    return [
+      "Write ONE tweet for StayLiquid's X account celebrating a winning trade just closed by the StayLiquid trading bot (a copy-trading bot for Solana memecoins).",
+      "Rules:", voice, noPromises,
+      "- Lead with the result (percentage and SOL). Invite people to follow the bot live.",
+      ...common, "", "FACTS:", ...item.facts.map(f => `- ${f}`)
+    ].join("\n");
+  }
+  if (item.topic === "promo") {
+    return [
+      "Write ONE promotional tweet for StayLiquid, a copy-trading bot for Solana memecoins.",
+      "Rules:", voice, noPromises,
+      "- Make people curious to check the app. Do not write the web address: it is added automatically.",
+      ...common, "", "FACTS:", ...item.facts.map(f => `- ${f}`)
+    ].join("\n");
+  }
+  return [
+    `Write ONE tweet for StayLiquid's X account (a Solana memecoin copy-trading bot) sharing this ${item.topic === "memecoins" ? "memecoin" : "crypto"} news.`,
+    "Rules:", voice,
+    "- Newsy and fast: what happened and why traders should care.",
+    ...common, "",
+    `HEADLINE: ${item.title}`,
+    `SUMMARY: ${(item.description || "").slice(0, 1500) || "(no summary)"}`
+  ].join("\n");
+}
+
+async function writeTweet(env, bot, cfg, item, withLink) {
   const maxBody = withLink ? 280 - X_URL_LENGTH - 1 : 280;
   const target = Math.min(240, maxBody - 10);
-
-  const prompt = cfg.language === "es" ? [
-    "Escribe UN tweet para la cuenta de X de Noticiero VOID (noticias de mercados, cripto, tecnología e IA).",
-    "Reglas:",
-    "- Español de España, tono de agencia de noticias: directo, claro y con gancho.",
-    "- Si la noticia está en inglés, tradúcela.",
-    `- Máximo ${target} caracteres.`,
-    "- Usa solo los datos de la noticia. No inventes cifras, fechas ni declaraciones.",
-    "- Sin hashtags, sin enlaces, sin emojis y sin comillas alrededor del texto.",
-    "- Devuelve solo el texto del tweet, nada más.",
-    "",
-    `TITULAR: ${article.title}`,
-    `RESUMEN: ${(article.description || "").slice(0, 1500) || "(sin resumen)"}`
-  ] : [
-    "Write ONE tweet for the X account of Noticiero VOID (markets, crypto, tech and AI news).",
-    "Rules:",
-    "- Write in English, in a sharp newswire style: direct, clear, with a hook.",
-    "- If the article is not in English, translate it.",
-    `- Maximum ${target} characters.`,
-    "- Use only facts from the article. Do not invent numbers, dates or quotes.",
-    "- No hashtags, no links, no emojis and no quotation marks around the text.",
-    "- Return only the tweet text, nothing else.",
-    "",
-    `HEADLINE: ${article.title}`,
-    `SUMMARY: ${(article.description || "").slice(0, 1500) || "(no summary)"}`
-  ];
-  const promptText = prompt.join("\n");
+  const prompt = buildPrompt(bot, cfg, item, target);
 
   let text = "";
   for (let attempt = 0; attempt < 2 && text.length < 20; attempt++) {
-    text = tidyAIText(await askAI(env, cfg.model, promptText, 2000));
+    text = tidyAIText(await askAI(env, cfg.model, prompt, 2000));
   }
   if (text.length < 20) throw new Error("respuesta vacía de la IA");
 
@@ -785,14 +1062,14 @@ async function writeTweet(env, cfg, article, withLink) {
     text = cut.slice(0, Math.max(cut.lastIndexOf(" "), maxBody - 30)).trimEnd() + "…";
   }
 
-  return withLink ? `${text}\n${article.url}` : text;
+  return withLink && item.url ? `${text}\n${item.url}` : text;
 }
 
 async function askAI(env, model, prompt, maxTokens) {
   if (!env.AI) throw new UserError("Falta el binding de Workers AI (AI).");
   const result = await env.AI.run(model, {
     messages: [
-      { role: "system", content: "You are the social media editor of a financial news outlet. You are rigorous and concise." },
+      { role: "system", content: "You are the social media editor of a crypto and financial news brand. You are rigorous and concise." },
       { role: "user", content: prompt }
     ],
     max_tokens: maxTokens
@@ -815,12 +1092,20 @@ function tidyAIText(text) {
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/^```\w*\s*|```$/g, "")
     .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\bstayliquid\.tech\S*/gi, "StayLiquid")
     .replace(/#\w+/g, "")
     .replace(/^\s*(tweet|texto|text)\s*:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^["'“”«»]+|["'“”«»]+$/g, "")
     .trim();
+}
+
+function formatDuration(ms) {
+  const min = Math.max(1, Math.round(ms / 60000));
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 48 ? `${h} h ${min % 60} min` : `${Math.round(h / 24)} days`;
 }
 
 // ---------------------------------------------------------------------------
@@ -851,24 +1136,26 @@ async function fetchArticles(env, cfg) {
 
     if (!title || !/^https?:\/\//i.test(link)) continue;
     if (Number.isFinite(date) && (now - date) / 3600000 > cfg.maxArticleAgeHours) continue;
-    if (!found.has(link)) {
-      found.set(link, { title, url: link, description, date: Number.isFinite(date) ? date : 0, topic: classifyTopic(title, description) });
-    }
+    if (!found.has(link)) found.set(link, { title, url: link, description, date: Number.isFinite(date) ? date : 0 });
   }
 
   const links = [...found.keys()];
   if (!links.length) return [];
+  const used = await usedKeys(env, cfg.bot, links);
+  return [...found.values()].filter(a => !used.has(a.url)).sort((a, b) => b.date - a.date);
+}
 
+// Claves (enlaces de noticias, operaciones...) que este bot ya ha usado para un tweet.
+async function usedKeys(env, bot, keys) {
   const used = new Set();
-  for (let i = 0; i < links.length; i += 50) {
-    const chunk = links.slice(i, i + 50);
+  for (let i = 0; i < keys.length; i += 50) {
+    const chunk = keys.slice(i, i + 50);
     const rows = await env.DB.prepare(
-      `SELECT article_url FROM tweets WHERE article_url IN (${chunk.map(() => "?").join(",")})`
-    ).bind(...chunk).all();
+      `SELECT article_url FROM tweets WHERE bot=? AND article_url IN (${chunk.map(() => "?").join(",")})`
+    ).bind(bot, ...chunk).all();
     for (const row of rows.results || []) used.add(row.article_url);
   }
-
-  return [...found.values()].filter(a => !used.has(a.url)).sort((a, b) => b.date - a.date);
+  return used;
 }
 
 function xmlTag(block, tag) {
@@ -896,8 +1183,8 @@ function cleanXml(value) {
 // ---------------------------------------------------------------------------
 // Horarios de los automáticos
 
-async function scheduleTweets(env, ids, exactAt) {
-  const cfg = await getConfig(env);
+async function scheduleTweets(env, bot, ids, exactAt) {
+  const cfg = await getConfig(env, bot);
 
   if (exactAt) {
     const when = checkFutureTime(exactAt);
@@ -907,34 +1194,34 @@ async function scheduleTweets(env, ids, exactAt) {
     return;
   }
 
-  const slots = await nextSlots(env, cfg, ids.length, ids);
+  const slots = await nextSlots(env, bot, cfg, ids.length, ids);
   for (let i = 0; i < ids.length; i++) {
     await env.DB.prepare("UPDATE tweets SET scheduled_at=? WHERE id=?").bind(slots[i].toISOString(), ids[i]).run();
   }
 }
 
-async function rescheduleAll(env) {
+async function rescheduleAll(env, bot) {
   const rows = await env.DB.prepare(
-    "SELECT id FROM tweets WHERE status='pending' AND mode='auto' ORDER BY scheduled_at, created_at"
-  ).all();
+    "SELECT id FROM tweets WHERE bot=? AND status='pending' AND mode='auto' ORDER BY scheduled_at, created_at"
+  ).bind(bot).all();
   const ids = (rows.results || []).map(r => r.id);
   if (!ids.length) return 0;
-  const cfg = await getConfig(env);
-  const slots = await nextSlots(env, cfg, ids.length, ids);
+  const cfg = await getConfig(env, bot);
+  const slots = await nextSlots(env, bot, cfg, ids.length, ids);
   for (let i = 0; i < ids.length; i++) {
     await env.DB.prepare("UPDATE tweets SET scheduled_at=? WHERE id=?").bind(slots[i].toISOString(), ids[i]).run();
   }
   return ids.length;
 }
 
-// Busca huecos respetando: horario de publicación, separación mínima y máximo diario.
-async function nextSlots(env, cfg, count, excludeIds = []) {
+// Busca huecos respetando: horario de publicación, separación mínima y máximo diario (de este bot).
+async function nextSlots(env, bot, cfg, count, excludeIds = []) {
   const now = Date.now();
   const rows = await env.DB.prepare(`
     SELECT id, COALESCE(published_at, scheduled_at) AS at FROM tweets
-    WHERE (status='published' AND published_at >= ?)
-       OR (status IN ('pending','sending') AND mode='auto' AND scheduled_at IS NOT NULL)
-  `).bind(new Date(now - 2 * 86400000).toISOString()).all();
+    WHERE bot=? AND ((status='published' AND published_at >= ?)
+       OR (status IN ('pending','sending') AND mode='auto' AND scheduled_at IS NOT NULL))
+  `).bind(bot, new Date(now - 2 * 86400000).toISOString()).all();
 
   const exclude = new Set(excludeIds.map(Number));
   const taken = (rows.results || []).filter(r => !exclude.has(Number(r.id)) && r.at).map(r => Date.parse(r.at));
@@ -980,8 +1267,8 @@ function localHour(date, timezone) {
 
 // ---------------------------------------------------------------------------
 // Base de datos
-// Usa tablas nuevas (tweets, tw_config, tw_log, tw_locks). Las tablas de versiones
-// anteriores (posts, settings, events...) se dejan intactas y no se usan.
+// Tablas: tweets, tw_config, tw_log, tw_locks. Cada tweet y cada línea de actividad lleva su bot.
+// Las tablas de versiones antiguas (posts, settings, events...) se dejan intactas y no se usan.
 
 let schemaReady = false;
 
@@ -1013,32 +1300,41 @@ async function ensureSchema(env) {
     )`),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS tw_locks(name TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at INTEGER NOT NULL)")
   ]);
-  const columns = new Set(((await env.DB.prepare("PRAGMA table_info(tweets)").all()).results || []).map(c => c.name));
-  for (const [name, type] of [["topic", "TEXT"], ["article_summary", "TEXT"]]) {
-    if (!columns.has(name)) await env.DB.prepare(`ALTER TABLE tweets ADD COLUMN ${name} ${type}`).run();
-  }
+  await addColumns(env, "tweets", [
+    ["topic", "TEXT"], ["article_summary", "TEXT"], ["link_url", "TEXT"], ["bot", "TEXT NOT NULL DEFAULT 'void'"]
+  ]);
+  await addColumns(env, "tw_log", [["bot", "TEXT NOT NULL DEFAULT 'void'"]]);
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS tweets_bot_idx ON tweets(bot, status, mode, scheduled_at)").run();
   schemaReady = true;
 }
 
-async function getConfig(env) {
-  const row = await env.DB.prepare("SELECT value FROM tw_config WHERE key='config'").first();
+async function addColumns(env, table, columns) {
+  const have = new Set(((await env.DB.prepare(`PRAGMA table_info(${table})`).all()).results || []).map(c => c.name));
+  for (const [name, type] of columns) {
+    if (!have.has(name)) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run();
+  }
+}
+
+async function getConfig(env, bot) {
+  const defaults = BOTS[bot].defaults;
+  const row = await env.DB.prepare("SELECT value FROM tw_config WHERE key=?").bind(configKey(bot)).first();
   let stored = {};
   try { stored = row ? JSON.parse(row.value) : {}; } catch {}
-  const cfg = { ...DEFAULT_CONFIG, ...stored };
-  cfg.topicPlan = { ...DEFAULT_CONFIG.topicPlan, ...(stored.topicPlan || {}) };
-  cfg.maxPerDay = planTotal(cfg.topicPlan); // el máximo diario es la suma del plan
+  const cfg = { ...defaults, ...stored, bot };
+  cfg.topicPlan = Object.fromEntries(Object.keys(BOTS[bot].topics).map(k => [k, Number(stored.topicPlan?.[k] ?? defaults.topicPlan[k]) || 0]));
+  cfg.maxPerDay = planTotal(bot, cfg.topicPlan); // el máximo diario es la suma del plan
   return cfg;
 }
 
-async function saveConfig(env, patch) {
-  const next = { ...(await getConfig(env)), ...patch };
+async function saveConfig(env, bot, patch) {
+  const { bot: _ignored, ...next } = { ...(await getConfig(env, bot)), ...patch };
   await env.DB.prepare(
-    "INSERT INTO tw_config(key, value) VALUES('config', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-  ).bind(JSON.stringify(next)).run();
-  return next;
+    "INSERT INTO tw_config(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+  ).bind(configKey(bot), JSON.stringify(next)).run();
+  return { ...next, bot };
 }
 
-function validateConfig(body) {
+function validateConfig(bot, body) {
   const out = {};
   const num = (key, min, max) => {
     if (body[key] === undefined) return;
@@ -1055,6 +1351,10 @@ function validateConfig(body) {
   num("monthlyBudgetEur", 0, 10000);
   num("costPerTweetEur", 0, 10);
   num("costPerLinkTweetEur", 0, 10);
+  if (bot === "stayliquid") {
+    num("minTradePct", 0, 10000);
+    num("minTradeSol", 0, 1000);
+  }
 
   for (const key of ["windowStart", "windowEnd", "linkEvery"]) {
     if (out[key] !== undefined) out[key] = Math.round(out[key]);
@@ -1064,15 +1364,14 @@ function validateConfig(body) {
 
   if (body.topicPlan !== undefined) {
     const plan = {};
-    for (const key of Object.keys(TOPICS)) {
+    for (const key of Object.keys(BOTS[bot].topics)) {
       const n = Math.round(Number(body.topicPlan?.[key]) || 0);
       if (n < 0 || n > 50) throw new UserError("Cada tema debe tener entre 0 y 50 tweets.");
       plan[key] = n;
     }
-    const total = planTotal(plan);
+    const total = planTotal(bot, plan);
     if (total < 1 || total > 100) throw new UserError("El plan del día debe sumar entre 1 y 100 tweets.");
     out.topicPlan = plan;
-    out.maxPerDay = total;
   }
 
   if (body.newTweetsMode !== undefined) out.newTweetsMode = body.newTweetsMode === "manual" ? "manual" : "auto";
@@ -1116,18 +1415,20 @@ async function setKey(env, key, value) {
   ).bind(key, String(value)).run();
 }
 
-async function insertTweet(env, { text, mode, articleUrl, articleTitle, articleSummary = null, topic = "other" }) {
+async function insertTweet(env, bot, { text, mode, articleUrl, articleTitle, articleSummary = null, topic, linkUrl = null }) {
+  const topics = BOTS[bot].topics;
+  const safeTopic = topics[topic] ? topic : (topics.other ? "other" : Object.keys(topics)[0]);
   const result = await env.DB.prepare(`
-    INSERT INTO tweets(text, mode, status, has_link, article_url, article_title, article_summary, topic, created_at)
-    VALUES(?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-  `).bind(text, mode, hasLink(text) ? 1 : 0, articleUrl, articleTitle, articleSummary, TOPICS[topic] ? topic : "other", new Date().toISOString()).run();
+    INSERT INTO tweets(bot, text, mode, status, has_link, article_url, article_title, article_summary, topic, link_url, created_at)
+    VALUES(?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+  `).bind(bot, text, mode, hasLink(text) ? 1 : 0, articleUrl, articleTitle, articleSummary, safeTopic, linkUrl, new Date().toISOString()).run();
   return result.meta.last_row_id;
 }
 
-async function log(env, level, message) {
-  await env.DB.prepare("INSERT INTO tw_log(level, message, created_at) VALUES(?, ?, ?)")
-    .bind(level, String(message).slice(0, 2000), new Date().toISOString()).run();
-  await env.DB.prepare("DELETE FROM tw_log WHERE id <= (SELECT MAX(id) - 500 FROM tw_log)").run();
+async function log(env, bot, level, message) {
+  await env.DB.prepare("INSERT INTO tw_log(bot, level, message, created_at) VALUES(?, ?, ?, ?)")
+    .bind(bot, level, String(message).slice(0, 2000), new Date().toISOString()).run();
+  await env.DB.prepare("DELETE FROM tw_log WHERE id <= (SELECT MAX(id) - 1000 FROM tw_log)").run();
 }
 
 async function acquireLock(env, name, seconds) {
