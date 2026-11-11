@@ -8,7 +8,7 @@
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "10.0.0";
+const VERSION = "10.1.0";
 const TICK_MS = 60000;
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
 
@@ -311,6 +311,30 @@ async function route(request, url, env, bot) {
     await setKey(env, botKey(bot, "x_app"), JSON.stringify({ key, secret, savedAt: new Date().toISOString() }));
     await log(env, bot, "ok", "Claves de la app de X guardadas.");
     return json({ ok: true });
+  }
+
+  // Access Token + Secret pegados a mano (los genera la consola de X para la cuenta dueña de la app).
+  if (path === "/api/x/tokens") {
+    const token = String(body.token || "").trim();
+    const secret = String(body.secret || "").trim();
+    if (!/^\d+-[\w-]{10,}$/.test(token) || !/^[\w-]{20,}$/.test(secret)) {
+      throw new UserError("Eso no parece un Access Token válido. Tiene la forma 123456789-AbCd… y el Secret es una cadena larga.");
+    }
+    if (!await getXApp(env, bot)) throw new UserError(`Primero guarda las claves de la app de X de ${BOTS[bot].name} (API Key y API Key Secret).`);
+    const previous = await getKey(env, botKey(bot, "x_account"));
+    await setKey(env, botKey(bot, "x_account"), JSON.stringify({ token, secret, connectedAt: new Date().toISOString() }));
+    try {
+      const me = await xRequest(env, bot, "GET", "https://api.x.com/2/users/me");
+      const username = me?.data?.username || null;
+      await setKey(env, botKey(bot, "x_account"), JSON.stringify({ token, secret, username, userId: me?.data?.id || null, connectedAt: new Date().toISOString() }));
+      await saveConfig(env, bot, { xUsername: username });
+      await log(env, bot, "ok", `Cuenta de X conectada con Access Token: @${username}.`);
+      return json({ ok: true, username });
+    } catch (error) {
+      if (previous) await setKey(env, botKey(bot, "x_account"), previous);
+      else await env.DB.prepare("DELETE FROM tw_config WHERE key=?").bind(botKey(bot, "x_account")).run();
+      throw new UserError(`X no acepta ese Access Token: ${error.message || error}`);
+    }
   }
 
   // Paso 1 del OAuth: pide a X un token temporal y devuelve la página donde el usuario autoriza.
@@ -668,6 +692,11 @@ async function xRequest(env, bot, method, endpoint, payload) {
 
 // Traduce los errores de X a algo que se entienda.
 function explainXError(status, body) {
+  if (/^\s*</.test(body)) {
+    return status >= 500
+      ? `X ha fallado por su lado (${status}). Vuelve a intentarlo en un rato o usa el Access Token de la consola de X.`
+      : `X respondió ${status} con una página de error.`;
+  }
   const raw = body.slice(0, 400);
   const lower = body.toLowerCase();
   if (status === 401) return "X rechaza las claves (401). Revisa las claves de la app y vuelve a conectar la cuenta de X.";
@@ -721,7 +750,9 @@ async function xOAuthStep(app, endpoint, extra, tokenSecret) {
     if (response.status === 401 && /callback/i.test(text)) {
       throw new UserError("X no reconoce la dirección de vuelta. Pon la «Callback URI» que sale en el panel en developer.x.com → tu app → User authentication settings.");
     }
-    throw new UserError(explainXError(response.status, text));
+    const error = new UserError(explainXError(response.status, text));
+    error.status = response.status;
+    throw error;
   }
   return new URLSearchParams(text);
 }
@@ -741,8 +772,16 @@ async function finishXConnect(env, url) {
   const bot = botOf(pending.bot);
   const app = await getXApp(env, bot);
   if (!app) throw new Error("Faltan las claves de la app de X de este bot.");
-  const res = await xOAuthStep(app, "https://api.x.com/oauth/access_token",
-    { oauth_token: token, oauth_verifier: verifier }, pending.secret);
+  // X a veces responde 500 en api.x.com: se reintenta en su dirección antigua.
+  let res;
+  try {
+    res = await xOAuthStep(app, "https://api.x.com/oauth/access_token",
+      { oauth_token: token, oauth_verifier: verifier }, pending.secret);
+  } catch (error) {
+    if (!(error.status >= 500)) throw error;
+    res = await xOAuthStep(app, "https://api.twitter.com/oauth/access_token",
+      { oauth_token: token, oauth_verifier: verifier }, pending.secret);
+  }
   const account = {
     token: res.get("oauth_token"),
     secret: res.get("oauth_token_secret"),
@@ -1111,12 +1150,27 @@ function formatDuration(ms) {
 // ---------------------------------------------------------------------------
 // RSS
 
-async function fetchArticles(env, cfg) {
-  const response = await fetch(cfg.rssUrl, {
+// El RSS de noticierovoid.com se pide directamente al worker «noticiero-void» (binding NOTICIERO):
+// así no depende del dominio público ni de su certificado SSL. Si falla, se usa Internet.
+async function fetchRss(env, rssUrl) {
+  const init = {
     headers: { "user-agent": `VOID-Lanzador/${VERSION}`, accept: "application/rss+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(15000)
-  });
-  if (!response.ok) throw new UserError(`No se pudo leer el RSS (${response.status}).`);
+  };
+  if (env.NOTICIERO && /(^|\.)noticierovoid\.com$/i.test(new URL(rssUrl).hostname)) {
+    try {
+      const response = await env.NOTICIERO.fetch(new Request(rssUrl, init));
+      if (response.ok) return response;
+    } catch (error) {
+      console.error("rss binding", error);
+    }
+  }
+  return fetch(rssUrl, init);
+}
+
+async function fetchArticles(env, cfg) {
+  const response = await fetchRss(env, cfg.rssUrl);
+  if (!response.ok) throw new UserError(`No se pudo leer el RSS (${response.status}${response.status === 526 ? ": el certificado SSL de la web está roto" : ""}).`);
 
   const xml = await response.text();
   const items = [...xml.matchAll(/<(item|entry)\b[^>]*>[\s\S]*?<\/\1\s*>/gi)].map(m => m[0]);

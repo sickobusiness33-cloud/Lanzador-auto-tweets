@@ -321,6 +321,12 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
           <button type="button" class="btn" id="btnXApp">Guardar claves</button>
         </div>
         <p id="xAccountText">—</p>
+        <div class="row" style="margin-bottom:8px">
+          <input id="xTok" placeholder="Access Token" autocomplete="off" style="flex:1;min-width:180px">
+          <input id="xTokSecret" type="password" placeholder="Access Token Secret" autocomplete="off" style="flex:1;min-width:180px">
+          <button type="button" class="btn" id="btnXTokens">Guardar Access Token</button>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin:0 0 12px">Si la cuenta es la dueña de la app, genera el Access Token en console.x.com → tu app → Keys &amp; Tokens → Access Token → Generar, y pégalo aquí. Si no, usa «Conectar cuenta de X».</p>
         <div class="row" style="margin-bottom:12px">
           <button type="button" class="btn primary" id="btnXConnect">🔗 Conectar cuenta de X</button>
           <button type="button" class="btn" id="btnTestX">Comprobar conexión</button>
@@ -957,6 +963,11 @@ $("#btnXApp").addEventListener("click", e => act(e.target, async () => {
   $("#xAppKey").value = ""; $("#xAppSecret").value = "";
   return r;
 }, "Claves de la app de X guardadas"));
+$("#btnXTokens").addEventListener("click", e => act(e.target, async () => {
+  const r = await api("/api/x/tokens", { token: $("#xTok").value, secret: $("#xTokSecret").value });
+  $("#xTok").value = ""; $("#xTokSecret").value = "";
+  return r;
+}, r => "✅ Conectado como @" + r.username));
 $("#btnXConnect").addEventListener("click", e => act(e.target, async () => {
   const r = await api("/api/x/connect", {});
   location.href = r.url;   // X pide entrar y autorizar; luego vuelve a /x/callback

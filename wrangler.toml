@@ -16,6 +16,11 @@ fallthrough = false
 [ai]
 binding = "AI"
 
+# El worker de la web de Noticiero VOID: el RSS se lee por aquí (no depende del dominio público).
+[[services]]
+binding = "NOTICIERO"
+service = "noticiero-void"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "void-autopilot-db"
