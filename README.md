@@ -3,7 +3,7 @@
 Worker de Cloudflare (`void-autopilot`) con **dos bots de X** en el mismo panel, cada uno con su cuenta, su app de X (sus créditos), su plan, su presupuesto y su botón de marcha:
 
 - **📰 Noticiero VOID**: tuitea noticias del RSS de noticierovoid.com por temas.
-- **💧 StayLiquid**: tuitea las operaciones ganadoras del bot de stayliquid.tech (historial público `/api/copy/history`), noticias de memecoins y cripto de noticierovoid.com y promoción de la app.
+- **💧 StayLiquid**: tuitea las operaciones ganadoras del bot de stayliquid.tech (historial público `/api/copy/history`), noticias de memecoins y cripto de noticierovoid.com y promoción de la app. Sus tweets solo enlazan a stayliquid.tech y no nombran otras plataformas.
 
 Panel: https://void-autopilot.tureganovictor79.workers.dev (contraseña = secreto `ADMIN_TOKEN`).
 

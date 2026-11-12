@@ -283,7 +283,8 @@ dialog textarea{width:100%;min-height:140px;font-size:16px}
             <h3>🔗 Tweets con enlace</h3>
             <p id="linkHelp">El enlace lleva a la noticia en tu web. En X un tweet con enlace cuesta bastante más.</p>
             <div class="field"><div class="row">1 de cada <input id="linkEvery" type="number" min="0" max="20"> tweets lleva enlace</div><small>0 = ningún tweet lleva enlace.</small></div>
-            <div class="field hidden" id="tradeField"><label>🏆 Operaciones que se tuitean</label><div class="row">solo si ganan al menos <input id="minTradePct" type="number" min="0" max="10000"> %</div><small>Se leen en vivo del historial público de stayliquid.tech.</small></div>
+            <div class="field hidden" id="tradeField"><label>🏆 Operaciones que se tuitean</label><div class="row">solo si ganan al menos <input id="minTradePct" type="number" min="0" max="10000"> %</div><small>Se leen en vivo del historial público de stayliquid.tech.</small>
+              <label class="row" style="margin-top:6px;font-weight:500"><input type="checkbox" id="tradesAlwaysLink" style="width:20px;height:20px"> Los tweets de ganancias llevan siempre el enlace a stayliquid.tech</label></div>
           </div>
           <div class="card">
             <h3>🌐 Idioma de los tweets</h3>
@@ -570,7 +571,7 @@ function render() {
       ? `Usando las claves de la app de X guardadas en Cloudflare (<b>${esc(app.keyHint)}</b>). Si quieres otra app (otros créditos), pega aquí su API Key y API Key Secret.`
       : "Pega la <b>API Key</b> y la <b>API Key Secret</b> de la app de X de este bot (developer.x.com → tu app → Keys and tokens). Cada app tiene sus propios créditos.";
   $("#linkHelp").textContent = s.bot === "stayliquid"
-    ? "Noticias → enlace a la noticia en noticierovoid.com. Operaciones → enlace a stayliquid.tech. La promoción siempre lleva enlace a stayliquid.tech. En X un tweet con enlace cuesta bastante más."
+    ? "Todos los enlaces de StayLiquid van a stayliquid.tech (nunca a otras webs). Ganancias y promoción lo llevan siempre; las noticias, 1 de cada N. En X un tweet con enlace cuesta bastante más."
     : "El enlace lleva a la noticia en noticierovoid.com. En X un tweet con enlace cuesta bastante más.";
   $("#tradeField").classList.toggle("hidden", s.bot !== "stayliquid");
   $("#account").textContent = c.xUsername ? "Publica en @" + c.xUsername : "Cuenta de X sin comprobar";
@@ -728,6 +729,7 @@ function fillPlan() {
   PLAN = { ...STATE.config.topicPlan };
   $("#linkEvery").value = STATE.config.linkEvery;
   if (STATE.config.minTradePct !== undefined) $("#minTradePct").value = STATE.config.minTradePct;
+  $("#tradesAlwaysLink").checked = Boolean(STATE.config.tradesAlwaysLink);
   setSeg("#langSeg", STATE.config.language);
   setSeg("#modeSeg", STATE.config.newTweetsMode);
   renderPlan();
@@ -772,7 +774,7 @@ $("#btnSavePlan").addEventListener("click", e => act(e.target, async () => {
   const r = await api("/api/config", {
     topicPlan: PLAN,
     linkEvery: Number($("#linkEvery").value),
-    ...(STATE.bot === "stayliquid" ? { minTradePct: Number($("#minTradePct").value) } : {}),
+    ...(STATE.bot === "stayliquid" ? { minTradePct: Number($("#minTradePct").value), tradesAlwaysLink: $("#tradesAlwaysLink").checked } : {}),
     language: segValue("#langSeg"),
     newTweetsMode: segValue("#modeSeg")
   });

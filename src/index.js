@@ -8,7 +8,7 @@
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "10.1.1";
+const VERSION = "10.2.0";
 const TICK_MS = 60000;
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
 
@@ -106,7 +106,8 @@ const BOTS = {
       appUrl: "https://stayliquid.tech",
       historyUrl: "https://stayliquid.tech/api/copy/history",
       minTradePct: 15,           // solo tuitea operaciones cerradas con al menos este % de ganancia
-      minTradeSol: 0.2           // y con una compra de al menos esto (evita cierres sin coste real)
+      minTradeSol: 0.2,          // y con una compra de al menos esto (evita cierres sin coste real)
+      tradesAlwaysLink: true     // los tweets de ganancias llevan siempre el enlace a stayliquid.tech
     }
   }
 };
@@ -596,7 +597,8 @@ async function publishTweet(env, tweet, { manual }) {
 
   // Red de seguridad para los tweets de la IA: ningún dominio suelto se publica como enlace de pago.
   if (tweet.article_url) {
-    const clean = stripBareDomains(tweet.text);
+    let clean = stripBareDomains(tweet.text);
+    if (bot === "stayliquid") clean = onlyAppLinks(scrubOtherBrands(clean), cfg.appUrl);
     if (clean !== tweet.text) {
       await env.DB.prepare("UPDATE tweets SET text=?, has_link=? WHERE id=?").bind(clean, hasLink(clean) ? 1 : 0, tweet.id).run();
       tweet = { ...tweet, text: clean, has_link: hasLink(clean) ? 1 : 0 };
@@ -820,7 +822,8 @@ async function collectMaterial(env, bot, cfg, topicFilter) {
     if (wants("memecoins") || wants("crypto")) {
       for (const a of await fetchArticles(env, cfg)) {
         if (classifyTopic(a.title, a.description) !== "crypto") continue;
-        items.push({ ...a, key: a.url, topic: isMemeNews(a.title, a.description) ? "memecoins" : "crypto" });
+        // En StayLiquid el único enlace permitido es la web de StayLiquid, también en las noticias.
+        items.push({ ...a, key: a.url, url: cfg.appUrl, topic: isMemeNews(a.title, a.description) ? "memecoins" : "crypto" });
       }
     }
     if (wants("trades")) {
@@ -852,13 +855,15 @@ async function fetchWinningTrades(env, bot, cfg) {
     topic: "trades",
     key: `stayliquid:trade:${c.sig}`,
     url: cfg.appUrl,
+    alwaysLink: Boolean(cfg.tradesAlwaysLink),
     title: `StayLiquid bot closed a +${c.pct.toFixed(1)}% trade`,
     description: "",
     facts: [
       `Profit: +${c.profit.toFixed(3)} SOL (+${c.pct.toFixed(1)}%)`,
       `Entry: ${c.cost.toFixed(3)} SOL, exit: ${c.proceeds.toFixed(3)} SOL`,
       `Time in the trade: ${formatDuration(c.closeAt - c.openAt)}`,
-      `Market: ${c.venue === "pump" ? "Pump fun memecoin" : "Solana memecoin"} (token ${c.mint.slice(0, 4)}…${c.mint.slice(-4)})`
+      "Asset: a Solana memecoin",
+      "Anyone can copy the StayLiquid bot live on the StayLiquid website, signing each trade in their own wallet"
     ]
   }));
 }
@@ -921,7 +926,7 @@ async function promoItems(env, bot, cfg) {
     "Highlight that it is non-custodial: you copy each trade signing it in your own wallet; StayLiquid never holds your funds.",
     "Use the best trade of the week to show what the bot can do (only the given numbers).",
     "Mention the live terminal: every buy and sell of the bot appears on-chain in real time, fully transparent.",
-    "Invite memecoin traders on Solana to follow the bot and copy it with their own limits (stop loss, take profit)."
+    "Invite memecoin traders on Solana to follow the bot on StayLiquid and copy it with their own limits (stop loss, take profit)."
   ];
   return angles.map((angle, i) => ({
     topic: "promo",
@@ -931,8 +936,8 @@ async function promoItems(env, bot, cfg) {
     title: "StayLiquid promo",
     description: "",
     facts: [
-      "StayLiquid is a copy-trading bot for Solana memecoins (pump.fun).",
-      "You follow the bot's trades live and copy each one by signing it in your own wallet (Phantom, Brave Wallet).",
+      "StayLiquid is a copy-trading bot for Solana memecoins.",
+      "You follow the bot's trades live on the StayLiquid website and copy each one by signing it in your own wallet.",
       "Non-custodial: StayLiquid never signs for you and never holds your funds.",
       "Live terminal with every on-chain buy and sell, stats, win rate and PnL.",
       live,
@@ -1066,13 +1071,13 @@ function buildPrompt(bot, cfg, item, target) {
     ].join("\n");
   }
 
-  const voice = "- Voice: confident crypto-native trader, punchy and fun but credible. At most one emoji.";
+  const voice = "- Voice: confident crypto-native trader, punchy and fun but credible. At most one emoji.\n- The only brand you mention is StayLiquid. Never mention other platforms, exchanges, launchpads or wallets (no pump.fun, Pump fun, Raydium, Jupiter, Phantom, etc.).";
   const noPromises = "- Never promise profits or guaranteed returns. Past results are not a guarantee.";
   if (item.topic === "trades") {
     return [
       "Write ONE tweet for StayLiquid's X account celebrating a winning trade just closed by the StayLiquid trading bot (a copy-trading bot for Solana memecoins).",
       "Rules:", voice, noPromises,
-      "- Lead with the result (percentage and SOL). Invite people to follow the bot live.",
+      "- Lead with the result (percentage and SOL), then sell StayLiquid: invite people to copy the bot live on StayLiquid. Do not write the web address: it is added automatically.",
       ...common, "", "FACTS:", ...item.facts.map(f => `- ${f}`)
     ].join("\n");
   }
@@ -1087,7 +1092,7 @@ function buildPrompt(bot, cfg, item, target) {
   return [
     `Write ONE tweet for StayLiquid's X account (a Solana memecoin copy-trading bot) sharing this ${item.topic === "memecoins" ? "memecoin" : "crypto"} news.`,
     "Rules:", voice,
-    "- Newsy and fast: what happened and why traders should care.",
+    "- Newsy and fast: what happened and why traders should care. You may end with a short nod to StayLiquid.",
     ...common, "",
     `HEADLINE: ${item.title}`,
     `SUMMARY: ${(item.description || "").slice(0, 1500) || "(no summary)"}`
@@ -1105,6 +1110,7 @@ async function writeTweet(env, bot, cfg, item, withLink) {
   }
   if (text.length < 20) throw new Error("respuesta vacía de la IA");
   text = stripBareDomains(text);
+  if (bot === "stayliquid") text = scrubOtherBrands(text);
 
   if (text.length > maxBody) {
     const cut = text.slice(0, maxBody - 1);
@@ -1417,6 +1423,7 @@ function validateConfig(bot, body) {
   num("costPerTweetEur", 0, 10);
   num("costPerLinkTweetEur", 0, 10);
   if (bot === "stayliquid") {
+    if (body.tradesAlwaysLink !== undefined) out.tradesAlwaysLink = Boolean(body.tradesAlwaysLink);
     num("minTradePct", 0, 10000);
     num("minTradeSol", 0, 1000);
   }
@@ -1533,6 +1540,21 @@ const BARE_DOMAIN = /(^|[^\w@/.-])((?:[a-z0-9-]+\.)+(?:com|net|org|io|fun|tech|x
 function hasLink(text) {
   const withoutUrls = String(text).replace(/https?:\/\/\S+/gi, " ");
   return /https?:\/\/\S+/i.test(text) || new RegExp(BARE_DOMAIN.source, "i").test(withoutUrls);
+}
+
+// En StayLiquid solo se nombra a StayLiquid: fuera menciones a otras plataformas.
+function scrubOtherBrands(text) {
+  return String(text)
+    .replace(/\b(on|via|from|at|en)\s+pump\s?\.?\s?fun\b/gi, "on Solana")
+    .replace(/\bpump\s?\.?\s?fun\b/gi, "Solana")
+    .replace(/\bpumpswap\b/gi, "Solana")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+// Enlaces de StayLiquid: cualquier https:// que no sea de stayliquid.tech se cambia por la web.
+function onlyAppLinks(text, appUrl) {
+  return String(text).replace(/https?:\/\/\S+/gi, url => /^https?:\/\/([a-z0-9-]+\.)*stayliquid\.tech(\/|$)/i.test(url) ? url : appUrl);
 }
 
 // Quita los dominios sueltos que escribe la IA (pump.fun → Pump fun) para que X no los convierta en enlace.
