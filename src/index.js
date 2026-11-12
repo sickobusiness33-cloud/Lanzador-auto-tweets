@@ -8,7 +8,7 @@
 import { DurableObject } from "cloudflare:workers";
 import APP_HTML from "./app.html";
 
-const VERSION = "10.1.0";
+const VERSION = "10.1.1";
 const TICK_MS = 60000;
 const X_URL_LENGTH = 23; // X cuenta cualquier enlace como 23 caracteres
 
@@ -593,6 +593,15 @@ async function recoverStuck(env) {
 async function publishTweet(env, tweet, { manual }) {
   const bot = botOf(tweet.bot);
   const cfg = await getConfig(env, bot);
+
+  // Red de seguridad para los tweets de la IA: ningún dominio suelto se publica como enlace de pago.
+  if (tweet.article_url) {
+    const clean = stripBareDomains(tweet.text);
+    if (clean !== tweet.text) {
+      await env.DB.prepare("UPDATE tweets SET text=?, has_link=? WHERE id=?").bind(clean, hasLink(clean) ? 1 : 0, tweet.id).run();
+      tweet = { ...tweet, text: clean, has_link: hasLink(clean) ? 1 : 0 };
+    }
+  }
   checkLength(tweet.text);
 
   const cost = tweet.has_link ? cfg.costPerLinkTweetEur : cfg.costPerTweetEur;
@@ -849,7 +858,7 @@ async function fetchWinningTrades(env, bot, cfg) {
       `Profit: +${c.profit.toFixed(3)} SOL (+${c.pct.toFixed(1)}%)`,
       `Entry: ${c.cost.toFixed(3)} SOL, exit: ${c.proceeds.toFixed(3)} SOL`,
       `Time in the trade: ${formatDuration(c.closeAt - c.openAt)}`,
-      `Market: ${c.venue === "pump" ? "pump.fun memecoin" : "Solana memecoin"} (token ${c.mint.slice(0, 4)}…${c.mint.slice(-4)})`
+      `Market: ${c.venue === "pump" ? "Pump fun memecoin" : "Solana memecoin"} (token ${c.mint.slice(0, 4)}…${c.mint.slice(-4)})`
     ]
   }));
 }
@@ -1041,7 +1050,7 @@ function buildPrompt(bot, cfg, item, target) {
     langRule,
     `- Maximum ${target} characters.`,
     "- Use only the facts given. Do not invent numbers, dates, names or quotes.",
-    "- No hashtags, no links and no quotation marks around the text.",
+    "- No hashtags, no links, no web addresses or domain names (write \"Pump fun\", never \"pump.fun\"), and no quotation marks around the text.",
     "- Return only the tweet text, nothing else."
   ];
 
@@ -1095,6 +1104,7 @@ async function writeTweet(env, bot, cfg, item, withLink) {
     text = tidyAIText(await askAI(env, cfg.model, prompt, 2000));
   }
   if (text.length < 20) throw new Error("respuesta vacía de la IA");
+  text = stripBareDomains(text);
 
   if (text.length > maxBody) {
     const cut = text.slice(0, maxBody - 1);
@@ -1132,6 +1142,7 @@ function tidyAIText(text) {
     .replace(/^```\w*\s*|```$/g, "")
     .replace(/https?:\/\/\S+/gi, "")
     .replace(/\bstayliquid\.tech\S*/gi, "StayLiquid")
+    .replace(/\bpump\.fun\b/gi, "Pump fun")
     .replace(/#\w+/g, "")
     .replace(/^\s*(tweet|texto|text)\s*:\s*/i, "")
     .replace(/\s+/g, " ")
@@ -1516,8 +1527,23 @@ function cleanText(value) {
   return String(value || "").replace(/\r\n/g, "\n").trim();
 }
 
+// X convierte en enlace cualquier dominio aunque no lleve https:// (pump.fun, x.com...), y eso lo cobra como enlace.
+const BARE_DOMAIN = /(^|[^\w@/.-])((?:[a-z0-9-]+\.)+(?:com|net|org|io|fun|tech|xyz|app|ai|co|dev|gg|so|me|finance|money|exchange|trade|news|info|tv|ly|to|sh|us|uk|es|cc|pro|bot|lol|meme|sol|wtf))(?![\w-])/gi;
+
 function hasLink(text) {
-  return /https?:\/\/\S+/i.test(text);
+  const withoutUrls = String(text).replace(/https?:\/\/\S+/gi, " ");
+  return /https?:\/\/\S+/i.test(text) || new RegExp(BARE_DOMAIN.source, "i").test(withoutUrls);
+}
+
+// Quita los dominios sueltos que escribe la IA (pump.fun → Pump fun) para que X no los convierta en enlace.
+// Los enlaces completos (https://...) que pone el bot a propósito se respetan.
+function stripBareDomains(text) {
+  return String(text).split(/(https?:\/\/\S+)/i).map((part, i) => i % 2 ? part : part.replace(BARE_DOMAIN, (_, pre, domain) => {
+    if (/^pump\.fun$/i.test(domain)) return `${pre}Pump fun`;
+    if (/^stayliquid\./i.test(domain)) return `${pre}StayLiquid`;
+    const name = domain.split(".")[0];
+    return pre + name.charAt(0).toUpperCase() + name.slice(1);
+  })).join("");
 }
 
 export function tweetLength(text) {
